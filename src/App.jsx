@@ -17,6 +17,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Plane,
+  Hotel,
+  Users,
+  Briefcase,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -89,6 +92,8 @@ function makeBlankTrip() {
     startDate: start,
     endDate: addDays(start, 3),
     ideas: [],
+    hotels: [],
+    flights: [],
     createdAt: new Date().toISOString(),
   };
 }
@@ -108,7 +113,7 @@ export default function App() {
   const [showTripEditor, setShowTripEditor] = useState(false);
   const [calendarMode, setCalendarMode] = useState("month");
   const [calendarCursor, setCalendarCursor] = useState(() => new Date(todayISO() + "T12:00:00"));
-  const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "" });
+  const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "", date: "", time: "" });
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
@@ -118,6 +123,8 @@ export default function App() {
   const activeTrip = trips.find((trip) => trip.id === activeTripId) || null;
   const tripDates = useMemo(() => getDateRange(activeTrip?.startDate, activeTrip?.endDate), [activeTrip]);
   const ideas = activeTrip?.ideas || [];
+  const hotels = activeTrip?.hotels || [];
+  const flights = activeTrip?.flights || [];
   const scheduledIdeas = ideas.filter((idea) => idea.date).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
   const unscheduledIdeas = ideas.filter((idea) => !idea.date);
   const filteredIdeas = ideas.filter((idea) => activeCategory === "all" || idea.category === activeCategory);
@@ -165,11 +172,11 @@ export default function App() {
       link: newIdea.link.trim(),
       notes: newIdea.notes.trim(),
       votes: 0,
-      date: "",
-      time: "",
+      date: newIdea.date || "",
+      time: newIdea.time || "",
     };
     updateTrip({ ideas: [idea, ...ideas] });
-    setNewIdea({ title: "", category: newIdea.category, link: "", notes: "" });
+    setNewIdea({ title: "", category: newIdea.category, link: "", notes: "", date: "", time: "" });
   }
 
   function updateIdea(id, updates) {
@@ -187,14 +194,51 @@ export default function App() {
     if (!activeTrip || !tripDates.length) return;
     const assignments = new Map();
     CATEGORIES.forEach((cat) => {
-      ideas
+      const categoryIdeas = ideas
         .filter((idea) => idea.category === cat.key)
-        .sort((a, b) => b.votes - a.votes)
-        .slice(0, tripDates.length)
-        .forEach((idea, index) => assignments.set(idea.id, { date: tripDates[index % tripDates.length], time: idea.time || cat.defaultTime }));
+        .sort((a, b) => b.votes - a.votes);
+
+      // Fixed-date ideas keep the date/time the user entered on the planning board.
+      categoryIdeas
+        .filter((idea) => idea.date)
+        .forEach((idea) => assignments.set(idea.id, { date: idea.date, time: idea.time || cat.defaultTime }));
+
+      // Flexible ideas fill the remaining trip days by vote count.
+      const takenDates = new Set(categoryIdeas.filter((idea) => idea.date).map((idea) => idea.date));
+      const openDates = tripDates.filter((date) => !takenDates.has(date));
+      categoryIdeas
+        .filter((idea) => !idea.date)
+        .slice(0, openDates.length)
+        .forEach((idea, index) => assignments.set(idea.id, { date: openDates[index % openDates.length], time: idea.time || cat.defaultTime }));
     });
     updateTrip({ ideas: ideas.map((idea) => (assignments.has(idea.id) ? { ...idea, ...assignments.get(idea.id) } : idea)) });
     setPage("itinerary");
+  }
+
+  function addHotel(hotel) {
+    if (!activeTrip || !hotel.name.trim()) return;
+    updateTrip({ hotels: [{ id: uid(), ...hotel, name: hotel.name.trim() }, ...hotels] });
+  }
+
+  function updateHotel(id, updates) {
+    updateTrip({ hotels: hotels.map((hotel) => (hotel.id === id ? { ...hotel, ...updates } : hotel)) });
+  }
+
+  function deleteHotel(id) {
+    updateTrip({ hotels: hotels.filter((hotel) => hotel.id !== id) });
+  }
+
+  function addFlight(flight) {
+    if (!activeTrip || !flight.person.trim()) return;
+    updateTrip({ flights: [{ id: uid(), ...flight, person: flight.person.trim() }, ...flights] });
+  }
+
+  function updateFlight(id, updates) {
+    updateTrip({ flights: flights.map((flight) => (flight.id === id ? { ...flight, ...updates } : flight)) });
+  }
+
+  function deleteFlight(id) {
+    updateTrip({ flights: flights.filter((flight) => flight.id !== id) });
   }
 
   return (
@@ -253,6 +297,7 @@ export default function App() {
         <div className="page-tabs">
           <button className={page === "board" ? "tab active" : "tab"} onClick={() => setPage("board")}><ListTodo size={16} /> Planning board</button>
           <button className={page === "itinerary" ? "tab active" : "tab"} onClick={() => setPage("itinerary")}><CalendarDays size={16} /> Your itinerary</button>
+          <button className={page === "logistics" ? "tab active" : "tab"} onClick={() => setPage("logistics")}><Hotel size={16} /> Logistics</button>
           <button className={page === "calendar" ? "tab active" : "tab"} onClick={() => setPage("calendar")}><CalendarRange size={16} /> All trips calendar</button>
         </div>
 
@@ -270,9 +315,12 @@ export default function App() {
             addIdea={addIdea}
             setEditingIdea={setEditingIdea}
             updateIdea={updateIdea}
+            tripDates={tripDates}
           />
         ) : page === "itinerary" ? (
           <ItineraryPage tripDates={tripDates} scheduledIdeas={scheduledIdeas} unscheduledIdeas={unscheduledIdeas} setEditingIdea={setEditingIdea} />
+        ) : page === "logistics" ? (
+          <LogisticsPage hotels={hotels} flights={flights} addHotel={addHotel} updateHotel={updateHotel} deleteHotel={deleteHotel} addFlight={addFlight} updateFlight={updateFlight} deleteFlight={deleteFlight} />
         ) : (
           <CalendarPage
             trips={trips}
@@ -347,7 +395,7 @@ function EmptyCreateTrip({ onAddTrip }) {
   );
 }
 
-function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, categoryCounts, newIdea, setNewIdea, addIdea, setEditingIdea, updateIdea }) {
+function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, categoryCounts, newIdea, setNewIdea, addIdea, setEditingIdea, updateIdea, tripDates }) {
   return (
     <section className="panel board-page">
       <div className="section-heading">
@@ -360,6 +408,13 @@ function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, c
           {CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}
         </select>
         <input value={newIdea.link} onChange={(e) => setNewIdea({ ...newIdea, link: e.target.value })} placeholder="Optional link" />
+        <div className="date-time-row">
+          <select value={newIdea.date} onChange={(e) => setNewIdea({ ...newIdea, date: e.target.value })}>
+            <option value="">Optional date</option>
+            {tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}
+          </select>
+          <input type="time" value={newIdea.time} onChange={(e) => setNewIdea({ ...newIdea, time: e.target.value })} />
+        </div>
         <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Notes, reservation details, why people should vote for it..." />
         <button className="primary-button" type="submit"><Plus size={17} /> Add to trip</button>
       </form>
@@ -401,6 +456,108 @@ function ItineraryPage({ tripDates, scheduledIdeas, unscheduledIdeas, setEditing
           })}
         </div>
       )}
+    </section>
+  );
+}
+
+
+function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, addFlight, updateFlight, deleteFlight }) {
+  const [hotelDraft, setHotelDraft] = useState({ name: "", address: "", checkInDate: "", checkInTime: "", checkOutDate: "", checkOutTime: "", confirmation: "", notes: "" });
+  const [flightDraft, setFlightDraft] = useState({ person: "", direction: "There", airline: "", flightNumber: "", from: "", to: "", date: "", departTime: "", arriveTime: "", confirmation: "", notes: "" });
+
+  function submitHotel(e) {
+    e.preventDefault();
+    addHotel(hotelDraft);
+    setHotelDraft({ name: "", address: "", checkInDate: "", checkInTime: "", checkOutDate: "", checkOutTime: "", confirmation: "", notes: "" });
+  }
+
+  function submitFlight(e) {
+    e.preventDefault();
+    addFlight(flightDraft);
+    setFlightDraft({ person: "", direction: "There", airline: "", flightNumber: "", from: "", to: "", date: "", departTime: "", arriveTime: "", confirmation: "", notes: "" });
+  }
+
+  return (
+    <section className="panel logistics-page">
+      <div className="section-heading">
+        <div><p className="eyebrow">Hotels and flights</p><h3>Logistics</h3></div>
+        <span className="mini-count">{hotels.length} hotel{hotels.length === 1 ? "" : "s"} • {flights.length} flight{flights.length === 1 ? "" : "s"}</span>
+      </div>
+
+      <div className="logistics-grid">
+        <form className="logistics-form" onSubmit={submitHotel}>
+          <div className="form-title"><Hotel size={18} /><strong>Add hotel</strong></div>
+          <input value={hotelDraft.name} onChange={(e) => setHotelDraft({ ...hotelDraft, name: e.target.value })} placeholder="Hotel / Airbnb name" />
+          <input value={hotelDraft.address} onChange={(e) => setHotelDraft({ ...hotelDraft, address: e.target.value })} placeholder="Address" />
+          <div className="two-col">
+            <input type="date" value={hotelDraft.checkInDate} onChange={(e) => setHotelDraft({ ...hotelDraft, checkInDate: e.target.value })} />
+            <input type="time" value={hotelDraft.checkInTime} onChange={(e) => setHotelDraft({ ...hotelDraft, checkInTime: e.target.value })} />
+          </div>
+          <div className="two-col">
+            <input type="date" value={hotelDraft.checkOutDate} onChange={(e) => setHotelDraft({ ...hotelDraft, checkOutDate: e.target.value })} />
+            <input type="time" value={hotelDraft.checkOutTime} onChange={(e) => setHotelDraft({ ...hotelDraft, checkOutTime: e.target.value })} />
+          </div>
+          <input value={hotelDraft.confirmation} onChange={(e) => setHotelDraft({ ...hotelDraft, confirmation: e.target.value })} placeholder="Confirmation number / booking link" />
+          <textarea value={hotelDraft.notes} onChange={(e) => setHotelDraft({ ...hotelDraft, notes: e.target.value })} placeholder="Notes: bag drop, room type, who booked it..." />
+          <button className="primary-button" type="submit"><Plus size={17} /> Add hotel</button>
+        </form>
+
+        <form className="logistics-form" onSubmit={submitFlight}>
+          <div className="form-title"><Plane size={18} /><strong>Add flight</strong></div>
+          <input value={flightDraft.person} onChange={(e) => setFlightDraft({ ...flightDraft, person: e.target.value })} placeholder="Traveler name" />
+          <select value={flightDraft.direction} onChange={(e) => setFlightDraft({ ...flightDraft, direction: e.target.value })}>
+            <option>There</option><option>Back</option><option>Connection</option><option>Other</option>
+          </select>
+          <div className="two-col">
+            <input value={flightDraft.airline} onChange={(e) => setFlightDraft({ ...flightDraft, airline: e.target.value })} placeholder="Airline" />
+            <input value={flightDraft.flightNumber} onChange={(e) => setFlightDraft({ ...flightDraft, flightNumber: e.target.value })} placeholder="Flight #" />
+          </div>
+          <div className="two-col">
+            <input value={flightDraft.from} onChange={(e) => setFlightDraft({ ...flightDraft, from: e.target.value })} placeholder="From" />
+            <input value={flightDraft.to} onChange={(e) => setFlightDraft({ ...flightDraft, to: e.target.value })} placeholder="To" />
+          </div>
+          <div className="three-col">
+            <input type="date" value={flightDraft.date} onChange={(e) => setFlightDraft({ ...flightDraft, date: e.target.value })} />
+            <input type="time" value={flightDraft.departTime} onChange={(e) => setFlightDraft({ ...flightDraft, departTime: e.target.value })} />
+            <input type="time" value={flightDraft.arriveTime} onChange={(e) => setFlightDraft({ ...flightDraft, arriveTime: e.target.value })} />
+          </div>
+          <input value={flightDraft.confirmation} onChange={(e) => setFlightDraft({ ...flightDraft, confirmation: e.target.value })} placeholder="Confirmation number / booking link" />
+          <textarea value={flightDraft.notes} onChange={(e) => setFlightDraft({ ...flightDraft, notes: e.target.value })} placeholder="Seat, terminal, baggage, who is on this flight..." />
+          <button className="primary-button" type="submit"><Plus size={17} /> Add flight</button>
+        </form>
+      </div>
+
+      <div className="saved-logistics">
+        <div className="logistics-list">
+          <h4><Hotel size={18} /> Hotel details</h4>
+          {hotels.length ? hotels.map((hotel) => (
+            <article className="logistics-card" key={hotel.id}>
+              <input value={hotel.name} onChange={(e) => updateHotel(hotel.id, { name: e.target.value })} />
+              <input value={hotel.address} onChange={(e) => updateHotel(hotel.id, { address: e.target.value })} placeholder="Address" />
+              <div className="two-col"><label>Check-in<input type="date" value={hotel.checkInDate} onChange={(e) => updateHotel(hotel.id, { checkInDate: e.target.value })} /></label><label>Time<input type="time" value={hotel.checkInTime} onChange={(e) => updateHotel(hotel.id, { checkInTime: e.target.value })} /></label></div>
+              <div className="two-col"><label>Check-out<input type="date" value={hotel.checkOutDate} onChange={(e) => updateHotel(hotel.id, { checkOutDate: e.target.value })} /></label><label>Time<input type="time" value={hotel.checkOutTime} onChange={(e) => updateHotel(hotel.id, { checkOutTime: e.target.value })} /></label></div>
+              <input value={hotel.confirmation} onChange={(e) => updateHotel(hotel.id, { confirmation: e.target.value })} placeholder="Confirmation / link" />
+              <textarea value={hotel.notes} onChange={(e) => updateHotel(hotel.id, { notes: e.target.value })} placeholder="Notes" />
+              <button className="danger-button" onClick={() => deleteHotel(hotel.id)} type="button"><Trash2 size={16} /> Delete hotel</button>
+            </article>
+          )) : <div className="empty-state">No hotel details yet.</div>}
+        </div>
+
+        <div className="logistics-list">
+          <h4><Users size={18} /> Flight details by person</h4>
+          {flights.length ? flights.map((flight) => (
+            <article className="logistics-card" key={flight.id}>
+              <div className="two-col"><input value={flight.person} onChange={(e) => updateFlight(flight.id, { person: e.target.value })} placeholder="Traveler" /><select value={flight.direction} onChange={(e) => updateFlight(flight.id, { direction: e.target.value })}><option>There</option><option>Back</option><option>Connection</option><option>Other</option></select></div>
+              <div className="two-col"><input value={flight.airline} onChange={(e) => updateFlight(flight.id, { airline: e.target.value })} placeholder="Airline" /><input value={flight.flightNumber} onChange={(e) => updateFlight(flight.id, { flightNumber: e.target.value })} placeholder="Flight #" /></div>
+              <div className="two-col"><input value={flight.from} onChange={(e) => updateFlight(flight.id, { from: e.target.value })} placeholder="From" /><input value={flight.to} onChange={(e) => updateFlight(flight.id, { to: e.target.value })} placeholder="To" /></div>
+              <div className="three-col"><input type="date" value={flight.date} onChange={(e) => updateFlight(flight.id, { date: e.target.value })} /><input type="time" value={flight.departTime} onChange={(e) => updateFlight(flight.id, { departTime: e.target.value })} /><input type="time" value={flight.arriveTime} onChange={(e) => updateFlight(flight.id, { arriveTime: e.target.value })} /></div>
+              <input value={flight.confirmation} onChange={(e) => updateFlight(flight.id, { confirmation: e.target.value })} placeholder="Confirmation / link" />
+              <textarea value={flight.notes} onChange={(e) => updateFlight(flight.id, { notes: e.target.value })} placeholder="Notes" />
+              <button className="danger-button" onClick={() => deleteFlight(flight.id)} type="button"><Trash2 size={16} /> Delete flight</button>
+            </article>
+          )) : <div className="empty-state">No flights yet. Add each person's outbound and return flight one at a time.</div>}
+        </div>
+      </div>
     </section>
   );
 }
@@ -582,8 +739,9 @@ button, input, textarea, select { font: inherit; }
 .section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
 .section-heading h3, .empty-start h3 { margin: 4px 0 0; font-size: 28px; letter-spacing: -.05em; }
 .mini-count { color: #cbd5e1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); padding: 8px 11px; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: nowrap; }
-.add-form { display: grid; grid-template-columns: 1.2fr .75fr 1fr auto; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
-.add-form textarea { grid-column: 1 / 4; min-height: 58px; }
+.add-form { display: grid; grid-template-columns: 1.2fr .75fr 1fr 1fr auto; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+.add-form textarea { grid-column: 1 / 5; min-height: 58px; }
+.date-time-row { display: grid; grid-template-columns: 1.2fr .8fr; gap: 8px; }
 input, textarea, select { width: 100%; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: #f8fafc; border-radius: 16px; padding: 12px 13px; outline: none; }
 select option { background: #0f172a; color: white; }
 textarea { min-height: 86px; resize: vertical; }
@@ -655,7 +813,14 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 .modal label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 13px; margin-bottom: 12px; }
 .close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: white; cursor: pointer; display: grid; place-items: center; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.logistics-grid, .saved-logistics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.logistics-grid { margin-bottom: 18px; }
+.logistics-form, .logistics-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 26px; padding: 16px; display: grid; gap: 10px; }
+.form-title, .logistics-list h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; letter-spacing: -.03em; }
+.logistics-list { display: grid; gap: 12px; align-content: start; }
+.logistics-card label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 12px; margin: 0; }
 .modal-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
-@media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .hero, .workspace { padding: 16px; } .topbar { align-items: flex-start; } .top-actions { width: 100%; margin-left: 0; } .hero h2 { font-size: 44px; } .add-form, .two-col, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; } .add-form textarea { grid-column: auto; } .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; } .calendar-controls { justify-content: flex-start; } .section-heading { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .logistics-grid, .saved-logistics { grid-template-columns: 1fr; } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .hero, .workspace { padding: 16px; } .topbar { align-items: flex-start; } .top-actions { width: 100%; margin-left: 0; } .hero h2 { font-size: 44px; } .add-form, .two-col, .three-col, .date-time-row, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; } .add-form textarea { grid-column: auto; } .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; } .calendar-controls { justify-content: flex-start; } .section-heading { align-items: flex-start; flex-direction: column; } }
 `;
