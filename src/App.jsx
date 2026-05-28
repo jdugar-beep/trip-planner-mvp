@@ -374,9 +374,6 @@ export default function App() {
         ) : (
           <CalendarPage
             trips={trips}
-            allScheduledItems={allScheduledItems}
-            calendarMode={calendarMode}
-            setCalendarMode={setCalendarMode}
             calendarCursor={calendarCursor}
             setCalendarCursor={setCalendarCursor}
             setActiveTripId={setActiveTripId}
@@ -606,6 +603,7 @@ function ItineraryPage({ tripDates, scheduledIdeas, unscheduledIdeas, setEditing
 
 
 function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, addFlight, updateFlight, deleteFlight }) {
+  const [logisticsFilter, setLogisticsFilter] = useState("all");
   const [hotelDraft, setHotelDraft] = useState({ name: "", address: "", checkInDate: "", checkInTime: "", checkOutDate: "", checkOutTime: "", confirmation: "", notes: "" });
   const [flightDraft, setFlightDraft] = useState({ person: "", direction: "There", airline: "", flightNumber: "", from: "", to: "", date: "", departTime: "", arriveTime: "", confirmation: "", notes: "" });
 
@@ -628,8 +626,14 @@ function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, ad
         <span className="mini-count">{hotels.length} hotel{hotels.length === 1 ? "" : "s"} • {flights.length} flight{flights.length === 1 ? "" : "s"}</span>
       </div>
 
+      <div className="logistics-filter-tabs" aria-label="Logistics filter">
+        <button className={logisticsFilter === "all" ? "active" : ""} onClick={() => setLogisticsFilter("all")} type="button">All</button>
+        <button className={logisticsFilter === "hotels" ? "active" : ""} onClick={() => setLogisticsFilter("hotels")} type="button"><Hotel size={16} /> Hotels</button>
+        <button className={logisticsFilter === "flights" ? "active" : ""} onClick={() => setLogisticsFilter("flights")} type="button"><Plane size={16} /> Flights</button>
+      </div>
+
       <div className="logistics-grid">
-        <form className="logistics-form" onSubmit={submitHotel}>
+        {(logisticsFilter === "all" || logisticsFilter === "hotels") && <form className="logistics-form" onSubmit={submitHotel}>
           <div className="form-title"><Hotel size={18} /><strong>Add hotel</strong></div>
           <input value={hotelDraft.name} onChange={(e) => setHotelDraft({ ...hotelDraft, name: e.target.value })} placeholder="Hotel / Airbnb name" />
           <input value={hotelDraft.address} onChange={(e) => setHotelDraft({ ...hotelDraft, address: e.target.value })} placeholder="Address" />
@@ -644,9 +648,9 @@ function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, ad
           <input value={hotelDraft.confirmation} onChange={(e) => setHotelDraft({ ...hotelDraft, confirmation: e.target.value })} placeholder="Confirmation number / booking link" />
           <textarea value={hotelDraft.notes} onChange={(e) => setHotelDraft({ ...hotelDraft, notes: e.target.value })} placeholder="Notes: bag drop, room type, who booked it..." />
           <button className="primary-button" type="submit"><Plus size={17} /> Add hotel</button>
-        </form>
+        </form>}
 
-        <form className="logistics-form" onSubmit={submitFlight}>
+        {(logisticsFilter === "all" || logisticsFilter === "flights") && <form className="logistics-form" onSubmit={submitFlight}>
           <div className="form-title"><Plane size={18} /><strong>Add flight</strong></div>
           <input value={flightDraft.person} onChange={(e) => setFlightDraft({ ...flightDraft, person: e.target.value })} placeholder="Traveler name" />
           <select value={flightDraft.direction} onChange={(e) => setFlightDraft({ ...flightDraft, direction: e.target.value })}>
@@ -668,11 +672,11 @@ function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, ad
           <input value={flightDraft.confirmation} onChange={(e) => setFlightDraft({ ...flightDraft, confirmation: e.target.value })} placeholder="Confirmation number / booking link" />
           <textarea value={flightDraft.notes} onChange={(e) => setFlightDraft({ ...flightDraft, notes: e.target.value })} placeholder="Seat, terminal, baggage, who is on this flight..." />
           <button className="primary-button" type="submit"><Plus size={17} /> Add flight</button>
-        </form>
+        </form>}
       </div>
 
       <div className="saved-logistics">
-        <div className="logistics-list">
+        {(logisticsFilter === "all" || logisticsFilter === "hotels") && <div className="logistics-list">
           <h4><Hotel size={18} /> Hotel details</h4>
           {hotels.length ? hotels.map((hotel) => (
             <article className="logistics-card" key={hotel.id}>
@@ -685,9 +689,9 @@ function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, ad
               <button className="danger-button" onClick={() => deleteHotel(hotel.id)} type="button"><Trash2 size={16} /> Delete hotel</button>
             </article>
           )) : <div className="empty-state">No hotel details yet.</div>}
-        </div>
+        </div>}
 
-        <div className="logistics-list">
+        {(logisticsFilter === "all" || logisticsFilter === "flights") && <div className="logistics-list">
           <h4><Users size={18} /> Flight details by person</h4>
           {flights.length ? flights.map((flight) => (
             <article className="logistics-card" key={flight.id}>
@@ -700,113 +704,101 @@ function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, ad
               <button className="danger-button" onClick={() => deleteFlight(flight.id)} type="button"><Trash2 size={16} /> Delete flight</button>
             </article>
           )) : <div className="empty-state">No flights yet. Add each person's outbound and return flight one at a time.</div>}
-        </div>
+        </div>}
       </div>
     </section>
   );
 }
 
-function CalendarPage({ trips, allScheduledItems, calendarMode, setCalendarMode, calendarCursor, setCalendarCursor, setActiveTripId, setPage }) {
+function CalendarPage({ trips, calendarCursor, setCalendarCursor, setActiveTripId, setPage }) {
   function moveCalendar(direction) {
     const d = new Date(calendarCursor);
-    if (calendarMode === "month") d.setMonth(d.getMonth() + direction);
-    if (calendarMode === "week") d.setDate(d.getDate() + direction * 7);
-    if (calendarMode === "year") d.setFullYear(d.getFullYear() + direction);
+    d.setMonth(d.getMonth() + direction);
     setCalendarCursor(d);
   }
 
   return (
     <section className="panel calendar-page">
       <div className="section-heading calendar-heading">
-        <div><p className="eyebrow">Across every trip</p><h3>Calendar</h3></div>
-        <div className="calendar-controls">
+        <div><p className="eyebrow">All trips</p><h3>Calendar</h3></div>
+        <div className="calendar-controls month-only-controls">
           <button className="icon-button" onClick={() => moveCalendar(-1)}><ChevronLeft size={18} /></button>
-          <strong>{calendarTitle(calendarCursor, calendarMode)}</strong>
+          <strong>{calendarTitle(calendarCursor)}</strong>
           <button className="icon-button" onClick={() => moveCalendar(1)}><ChevronRight size={18} /></button>
-          <div className="mode-toggle">
-            {['week', 'month', 'year'].map((mode) => <button key={mode} className={calendarMode === mode ? "active" : ""} onClick={() => setCalendarMode(mode)}>{mode}</button>)}
-          </div>
         </div>
       </div>
-      {!trips.length ? <div className="empty-state">Create trips and schedule cards to see everything here.</div> : calendarMode === "year" ? <YearCalendar cursor={calendarCursor} items={allScheduledItems} setActiveTripId={setActiveTripId} setPage={setPage} /> : <GridCalendar mode={calendarMode} cursor={calendarCursor} items={allScheduledItems} setActiveTripId={setActiveTripId} setPage={setPage} />}
+      {!trips.length ? (
+        <div className="empty-state">Create trips to see them together on your calendar.</div>
+      ) : (
+        <TripMonthCalendar trips={trips} cursor={calendarCursor} setActiveTripId={setActiveTripId} setPage={setPage} />
+      )}
     </section>
   );
 }
 
-function calendarTitle(cursor, mode) {
-  if (mode === "year") return String(cursor.getFullYear());
-  if (mode === "week") {
-    const start = weekStart(cursor);
-    const end = new Date(start); end.setDate(start.getDate() + 6);
-    return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${end.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-  }
+function calendarTitle(cursor) {
   return cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
-function GridCalendar({ mode, cursor, items, setActiveTripId, setPage }) {
+function TripMonthCalendar({ trips, cursor, setActiveTripId, setPage }) {
+  const start = monthStart(cursor);
+  const gridStart = weekStart(start);
   const days = [];
-  if (mode === "week") {
-    const start = weekStart(cursor);
-    for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); days.push(d); }
-  } else {
-    const start = monthStart(cursor);
-    const gridStart = weekStart(start);
-    for (let i = 0; i < 42; i++) { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); days.push(d); }
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    days.push(d);
   }
+
   return (
-    <div className={mode === "week" ? "calendar-grid week" : "calendar-grid"}>
-      {days.map((day) => {
-        const iso = day.toISOString().slice(0, 10);
-        const dayItems = items.filter((item) => item.date === iso).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-        const muted = mode === "month" && day.getMonth() !== cursor.getMonth();
-        return <CalendarCell key={iso} iso={iso} date={day} muted={muted} items={dayItems} setActiveTripId={setActiveTripId} setPage={setPage} />;
-      })}
+    <div className="calendar-month-shell">
+      <div className="calendar-weekdays">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
+      </div>
+      <div className="calendar-grid trip-calendar-grid">
+        {days.map((day) => {
+          const iso = day.toISOString().slice(0, 10);
+          const muted = day.getMonth() !== cursor.getMonth();
+          const activeTrips = trips.filter((trip) => trip.startDate && trip.endDate && iso >= trip.startDate && iso <= trip.endDate);
+          return (
+            <TripCalendarCell
+              key={iso}
+              iso={iso}
+              date={day}
+              muted={muted}
+              trips={activeTrips}
+              setActiveTripId={setActiveTripId}
+              setPage={setPage}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function YearCalendar({ cursor, items, setActiveTripId, setPage }) {
-  const months = Array.from({ length: 12 }, (_, month) => new Date(cursor.getFullYear(), month, 1));
+function TripCalendarCell({ iso, date, muted, trips, setActiveTripId, setPage }) {
   return (
-    <div className="year-grid">
-      {months.map((monthDate) => {
-        const monthItems = items.filter((item) => {
-          const d = new Date(item.date + "T12:00:00");
-          return d.getFullYear() === monthDate.getFullYear() && d.getMonth() === monthDate.getMonth();
-        });
-        return (
-          <article className="month-card" key={monthDate.toISOString()}>
-            <h4>{monthDate.toLocaleDateString(undefined, { month: "long" })}</h4>
-            <p>{monthItems.length} scheduled plan{monthItems.length === 1 ? "" : "s"}</p>
-            <div className="month-items">
-              {monthItems.slice(0, 4).map((item) => <MiniCalendarItem key={item.id} item={item} setActiveTripId={setActiveTripId} setPage={setPage} />)}
-              {monthItems.length > 4 && <span className="more-pill">+{monthItems.length - 4} more</span>}
-            </div>
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function CalendarCell({ iso, date, muted, items, setActiveTripId, setPage }) {
-  return (
-    <article className={muted ? "calendar-cell muted" : "calendar-cell"}>
-      <div className="cell-date"><span>{date.toLocaleDateString(undefined, { weekday: "short" })}</span><strong>{date.getDate()}</strong></div>
-      <div className="cell-items">
-        {items.slice(0, 4).map((item) => <MiniCalendarItem key={item.id + iso} item={item} setActiveTripId={setActiveTripId} setPage={setPage} />)}
-        {items.length > 4 && <span className="more-pill">+{items.length - 4} more</span>}
+    <article className={muted ? "calendar-cell trip-cell muted" : "calendar-cell trip-cell"}>
+      <div className="cell-date"><strong>{date.getDate()}</strong></div>
+      <div className="cell-items trip-lines">
+        {trips.slice(0, 3).map((trip) => {
+          const isStart = iso === trip.startDate;
+          const isEnd = iso === trip.endDate;
+          return (
+            <button
+              key={`${trip.id}-${iso}`}
+              className={`trip-calendar-line ${isStart ? "starts" : ""} ${isEnd ? "ends" : ""}`}
+              onClick={() => { setActiveTripId(trip.id); setPage("itinerary"); }}
+              title={`${trip.name}: ${formatDateLabel(trip.startDate, { short: true })} – ${formatDateLabel(trip.endDate, { short: true })}`}
+            >
+              {isStart ? trip.name : ""}
+            </button>
+          );
+        })}
+        {trips.length > 3 && <span className="more-pill">+{trips.length - 3} more</span>}
       </div>
     </article>
-  );
-}
-
-function MiniCalendarItem({ item, setActiveTripId, setPage }) {
-  const category = getCategory(item.category);
-  return (
-    <button className="mini-calendar-item" style={{ "--accent": category.accent }} onClick={() => { setActiveTripId(item.tripId); setPage("itinerary"); }}>
-      <span>{item.time || "Any"}</span> {category.emoji} {item.title}<em>{item.tripName}</em>
-    </button>
   );
 }
 
@@ -1021,6 +1013,25 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 .light-mode .add-trip-item { background: rgba(249,115,22,.14); color: #9a3412; border-color: rgba(249,115,22,.24); }
 .light-mode .mobile-nav-button { color: #64748b; }
 .light-mode .mobile-nav-button.active { background: #0f172a; color: white; }
+
+
+.logistics-filter-tabs { display: inline-flex; gap: 8px; padding: 6px; margin: 0 0 16px; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); }
+.logistics-filter-tabs button { border: 0; background: transparent; color: #cbd5e1; border-radius: 999px; padding: 9px 14px; font-weight: 900; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.logistics-filter-tabs button.active { background: linear-gradient(135deg, #fb923c, #f97316); color: #111827; box-shadow: 0 14px 28px rgba(249,115,22,.22); }
+.month-only-controls { min-width: 0; }
+.calendar-month-shell { display: grid; gap: 10px; }
+.calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; color: #94a3b8; font-size: 11px; font-weight: 950; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
+.trip-calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.trip-cell { min-height: 116px; padding: 10px; }
+.trip-cell .cell-date { margin-bottom: 8px; }
+.trip-cell .cell-date strong { font-size: 14px; }
+.trip-lines { gap: 5px; }
+.trip-calendar-line { width: 100%; min-height: 23px; border: 0; color: #111827; background: linear-gradient(135deg, #fbbf24, #fb923c); border-radius: 999px; padding: 5px 8px; text-align: left; font-size: 11px; font-weight: 950; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; box-shadow: 0 8px 18px rgba(251,146,60,.18); }
+.trip-calendar-line:not(.starts) { color: transparent; }
+.trip-calendar-line.starts { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+.trip-calendar-line.ends { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+.light-mode .logistics-filter-tabs { background: rgba(255,255,255,.72); border-color: rgba(15,23,42,.1); }
+.light-mode .logistics-filter-tabs button { color: #475569; }
 
 @media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .logistics-grid, .saved-logistics { grid-template-columns: 1fr; } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
