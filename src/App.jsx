@@ -15,6 +15,9 @@ import {
   Bell,
   Settings,
   User,
+  UserPlus,
+  Share2,
+  LogOut,
   ChevronLeft,
   ChevronRight,
   CalendarRange,
@@ -27,7 +30,6 @@ import {
   Vote,
   Wand2,
 } from "lucide-react";
-import { supabase } from "./supabaseClient";
 
 const CATEGORIES = ["breakfast", "lunch", "dinner", "activity", "drinks", "sightseeing", "exploring"];
 const CATEGORY_LABELS = {
@@ -106,46 +108,12 @@ export default function App() {
   const [page, setPage] = useState("planning");
   const [theme, setTheme] = useLocalStorage("trip-planner-mobile-beta-theme", "dark");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [tripEditorOpen, setTripEditorOpen] = useState(false);
   const [tripSwitcherOpen, setTripSwitcherOpen] = useState(false);
   const [ideaEditor, setIdeaEditor] = useState(null);
-  const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session || null);
-      setAuthLoading(false);
-      if (data.session?.user) ensureProfile(data.session.user);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setAuthLoading(false);
-      if (nextSession?.user) ensureProfile(nextSession.user);
-    });
-    return () => {
-      mounted = false;
-      listener?.subscription?.unsubscribe?.();
-    };
-  }, []);
-
-  async function ensureProfile(user) {
-    if (!user?.id) return;
-    const fallbackName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Traveler";
-    const fallbackUsername = (user.email?.split("@")[0] || `user_${user.id.slice(0, 6)}`).toLowerCase().replace(/[^a-z0-9_]/g, "_");
-    await supabase.from("profiles").upsert({
-      id: user.id,
-      full_name: fallbackName,
-      username: fallbackUsername,
-    }, { onConflict: "id" });
-  }
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    setSession(null);
-  }
 
   useEffect(() => {
     if (trips.length && !trips.some((t) => t.id === activeTripId)) setActiveTripId(trips[0].id);
@@ -189,24 +157,6 @@ export default function App() {
     setPage("itinerary");
   }
 
-  if (authLoading) {
-    return (
-      <div className={`app ${theme}`}>
-        <style>{css}</style>
-        <div className="authShell"><div className="authCard"><div className="authLogo">✈️</div><h1>Loading Trip Studio…</h1></div></div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <div className={`app ${theme}`}>
-        <style>{css}</style>
-        <AuthPage />
-      </div>
-    );
-  }
-
   return (
     <div className={`app ${theme}`}>
       <style>{css}</style>
@@ -218,15 +168,17 @@ export default function App() {
         page={page}
         setPage={setPage}
         addTrip={addTrip}
+        openNotifications={() => setNotificationsOpen(true)}
+        openProfile={() => setProfileOpen(true)}
         openSettings={() => setSettingsOpen(true)}
       />
       <main className="shell">
-        <MobileHero activeTrip={activeTrip} trips={trips} openTripSwitcher={() => setTripSwitcherOpen(true)} openTripEditor={() => setTripEditorOpen(true)} />
+        <MobileHero activeTrip={activeTrip} trips={trips} openTripSwitcher={() => setTripSwitcherOpen(true)} openNotifications={() => setNotificationsOpen(true)} openProfile={() => setProfileOpen(true)} />
         {!activeTrip ? (
           <EmptyState addTrip={addTrip} />
         ) : (
           <>
-            <TripControlStrip activeTrip={activeTrip} openTripEditor={() => setTripEditorOpen(true)} autoBuild={autoBuild} />
+            <TripControlStrip activeTrip={activeTrip} openTripEditor={() => setTripEditorOpen(true)} openShare={() => setShareOpen(true)} autoBuild={autoBuild} />
             {page === "planning" && <PlanningPage trip={activeTrip} mutateTrip={mutateActiveTrip} editIdea={setIdeaEditor} />}
             {page === "logistics" && <LogisticsPage trip={activeTrip} mutateTrip={mutateActiveTrip} />}
             {page === "itinerary" && <ItineraryPage trip={activeTrip} editIdea={setIdeaEditor} />}
@@ -235,67 +187,14 @@ export default function App() {
         )}
       </main>
       <MobileBottomNav page={page} setPage={setPage} addTrip={addTrip} />
-      {settingsOpen && <SettingsModal theme={theme} setTheme={setTheme} user={session?.user} signOut={signOut} close={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal theme={theme} setTheme={setTheme} close={() => setSettingsOpen(false)} />}
+      {notificationsOpen && <NotificationsModal trips={trips} activeTrip={activeTrip} close={() => setNotificationsOpen(false)} />}
+      {profileOpen && <ProfileModal trips={trips} close={() => setProfileOpen(false)} />}
+      {shareOpen && activeTrip && <ShareTripModal trip={activeTrip} mutateTrip={mutateActiveTrip} close={() => setShareOpen(false)} />}
       {tripEditorOpen && activeTrip && <TripEditor trip={activeTrip} save={(patch) => updateTrip(activeTrip.id, patch)} deleteTrip={() => deleteTrip(activeTrip.id)} close={() => setTripEditorOpen(false)} />}
       {tripSwitcherOpen && <TripSwitcher trips={trips} activeTripId={activeTripId} selectTrip={(id) => { setActiveTripId(id); setTripSwitcherOpen(false); setPage("planning"); }} addTrip={() => { setTripSwitcherOpen(false); addTrip(); }} close={() => setTripSwitcherOpen(false)} />}
       {ideaEditor && activeTrip && <IdeaEditor idea={ideaEditor} trip={activeTrip} mutateTrip={mutateActiveTrip} close={() => setIdeaEditor(null)} />}
     </div>
-  );
-}
-
-
-function AuthPage() {
-  const [mode, setMode] = useState("signIn");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [message, setMessage] = useState("");
-  const [working, setWorking] = useState(false);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setMessage("");
-    setWorking(true);
-    try {
-      if (mode === "signUp") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName || email.split("@")[0] } },
-        });
-        if (error) throw error;
-        setMessage("Account created. Check your email to confirm, then sign in.");
-        setMode("signIn");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      }
-    } catch (err) {
-      setMessage(err.message || "Something went wrong.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  return (
-    <main className="authShell">
-      <section className="authCard">
-        <div className="authLogo">✈️</div>
-        <div className="eyebrow">Trip Studio</div>
-        <h1>{mode === "signUp" ? "Create your account" : "Welcome back"}</h1>
-        <p>Save trips to your account now. Next, we’ll connect shared trips, groups, voting, and collaboration.</p>
-        <form className="authForm" onSubmit={handleSubmit}>
-          {mode === "signUp" && <input placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} />}
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-          {message && <div className="authMessage">{message}</div>}
-          <button className="primaryBtn full" disabled={working}>{working ? "Working…" : mode === "signUp" ? "Create Account" : "Log In"}</button>
-        </form>
-        <button className="authSwitch" onClick={() => { setMessage(""); setMode(mode === "signUp" ? "signIn" : "signUp"); }}>
-          {mode === "signUp" ? "Already have an account? Log in" : "New here? Create an account"}
-        </button>
-      </section>
-    </main>
   );
 }
 
@@ -314,7 +213,7 @@ function useLocalStorage(key, initial) {
   return [value, setValue];
 }
 
-function DesktopTopBar({ trips, activeTripId, setActiveTripId, page, setPage, addTrip, openSettings }) {
+function DesktopTopBar({ trips, activeTripId, setActiveTripId, page, setPage, addTrip, openNotifications, openProfile, openSettings }) {
   return (
     <header className="desktopTop">
       <div className="brand"><span className="logo">✈️</span><div><b>Trip Studio</b><small>collaborative travel planning</small></div></div>
@@ -322,7 +221,7 @@ function DesktopTopBar({ trips, activeTripId, setActiveTripId, page, setPage, ad
         <option value="" disabled>Select trip</option>
         {trips.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
-      <button className="iconBtn"><Bell size={18} /></button>
+      <button className="iconBtn notificationDot" onClick={openNotifications} aria-label="Notifications"><Bell size={18} /></button>
       <nav className="desktopNav">
         <button className={page === "planning" ? "active" : ""} onClick={() => setPage("planning")}>Planning</button>
         <button className={page === "logistics" ? "active" : ""} onClick={() => setPage("logistics")}>Logistics</button>
@@ -330,11 +229,12 @@ function DesktopTopBar({ trips, activeTripId, setActiveTripId, page, setPage, ad
         <button className={page === "calendar" ? "active" : ""} onClick={() => setPage("calendar")}>Calendar</button>
       </nav>
       <button className="orangeBtn" onClick={addTrip}><Plus size={17} /> Add Trip</button>
+      <button className="iconBtn" onClick={openProfile} aria-label="Profile"><User size={18} /></button>
       <button className="iconBtn" onClick={openSettings}><Settings size={18} /></button>
     </header>
   );
 }
-function MobileHero({ activeTrip, trips, openTripSwitcher, openTripEditor }) {
+function MobileHero({ activeTrip, trips, openTripSwitcher, openNotifications, openProfile }) {
   return (
     <div className="mobileHero">
       <div className="mobileHeroCopy">
@@ -345,15 +245,22 @@ function MobileHero({ activeTrip, trips, openTripSwitcher, openTripEditor }) {
         </button>
         {activeTrip && <p>{activeTrip.location || "Add location"} · {prettyDate(activeTrip.startDate)} – {prettyDate(activeTrip.endDate)}</p>}
       </div>
-      {activeTrip && <button className="ghostBtn small" onClick={openTripEditor}>Edit</button>}
+      <div className="heroActions">
+        <button className="heroIcon notificationDot" onClick={openNotifications} aria-label="Notifications"><Bell size={18} /></button>
+        <button className="heroIcon" onClick={openProfile} aria-label="My profile"><User size={18} /></button>
+      </div>
     </div>
   );
 }
-function TripControlStrip({ activeTrip, openTripEditor, autoBuild }) {
+function TripControlStrip({ activeTrip, openTripEditor, openShare, autoBuild }) {
+  const collabCount = activeTrip.collaborators?.length || 0;
   return (
     <section className="controlStrip">
-      <div className="tripMini"><span>{activeTrip.name}</span><small>{activeTrip.location || "No location yet"} · {prettyDate(activeTrip.startDate, { month: "short", day: "numeric" })}–{prettyDate(activeTrip.endDate, { month: "short", day: "numeric" })}</small></div>
-      <button className="ghostBtn" onClick={openTripEditor}><Edit3 size={15} /> Edit</button>
+      <div className="tripMini"><span>{activeTrip.name}</span><small>{activeTrip.location || "No location yet"} · {prettyDate(activeTrip.startDate, { month: "short", day: "numeric" })}–{prettyDate(activeTrip.endDate, { month: "short", day: "numeric" })}{collabCount ? ` · ${collabCount} collaborator${collabCount === 1 ? "" : "s"}` : ""}</small></div>
+      <div className="stripActions">
+        <button className="ghostBtn" onClick={openTripEditor}><Edit3 size={15} /> Edit</button>
+        <button className="ghostBtn iconOnly" onClick={openShare} aria-label="Share trip"><Share2 size={17} /></button>
+      </div>
       <button className="primaryBtn" onClick={autoBuild}><Wand2 size={16} /> Auto Build</button>
     </section>
   );
@@ -588,16 +495,104 @@ function TripSwitcher({ trips, activeTripId, selectTrip, addTrip, close }) {
 
 function TripEditor({ trip, save, deleteTrip, close }) { const [draft, setDraft] = useState({ name: trip.name, location: trip.location, startDate: trip.startDate, endDate: trip.endDate }); return <Modal close={close}><h2>Edit Trip</h2><input placeholder="Trip name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /><input placeholder="Location" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} /><div className="split2"><input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /><input type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} /></div><button className="primaryBtn full" onClick={() => { save(draft); close(); }}>Save Trip</button><button className="textDanger" onClick={() => { deleteTrip(); close(); }}>Delete Trip</button></Modal>; }
 function IdeaEditor({ idea, trip, mutateTrip, close }) { const [draft, setDraft] = useState(idea); const dates = daysBetween(trip.startDate, trip.endDate); function save() { mutateTrip((t) => ({ ...t, ideas: t.ideas.map((i) => i.id === idea.id ? { ...draft, scheduledDate: draft.scheduledDate || draft.date, scheduledTime: draft.scheduledTime || draft.time || PERIOD_TIMES[draft.period] || "" } : i) })); close(); } function del() { mutateTrip((t) => ({ ...t, ideas: t.ideas.filter((i) => i.id !== idea.id) })); close(); } return <Modal close={close}><h2>Edit Plan</h2><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>{CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</select><input placeholder="Link" value={draft.link || ""} onChange={(e) => setDraft({ ...draft, link: e.target.value })} /><textarea placeholder="Notes" value={draft.notes || ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /><select value={draft.scheduledDate || draft.date || ""} onChange={(e) => setDraft({ ...draft, scheduledDate: e.target.value, date: e.target.value })}><option value="">Unscheduled</option>{dates.map((d) => <option key={d} value={d}>{prettyDate(d)}</option>)}</select><div className="split2"><select value={draft.period || ""} onChange={(e) => setDraft({ ...draft, period: e.target.value, scheduledTime: PERIOD_TIMES[e.target.value] || "", time: "" })}><option value="">Flexible</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option></select><input type="time" value={draft.scheduledTime || draft.time || ""} onChange={(e) => setDraft({ ...draft, scheduledTime: e.target.value, time: e.target.value, period: "" })} /></div><button className="primaryBtn full" onClick={save}>Save Plan</button><button className="textDanger" onClick={del}>Delete Plan</button></Modal>; }
-function SettingsModal({ theme, setTheme, user, signOut, close }) {
-  return <Modal close={close}><h2>Settings</h2><div className="segmented"><button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button><button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button></div><div className="profileBox"><User /><div><b>Profile</b><p>{user?.email || "Signed in"}</p><small>Your full public profile, followers, saved trips, and groups will live here later.</small></div></div><button className="ghostBtn full" onClick={signOut}>Sign Out</button></Modal>;
+
+function ShareTripModal({ trip, mutateTrip, close }) {
+  const [email, setEmail] = useState("");
+  const collaborators = trip.collaborators || [];
+  function invite() {
+    if (!email.trim()) return;
+    const clean = email.trim().toLowerCase();
+    mutateTrip((t) => ({
+      ...t,
+      collaborators: [...(t.collaborators || []), { id: uid(), email: clean, status: "pending", invitedAt: new Date().toISOString() }],
+      activityLog: [{ id: uid(), type: "invite", text: `Invite sent to ${clean}`, createdAt: new Date().toISOString() }, ...(t.activityLog || [])],
+    }));
+    setEmail("");
+  }
+  return (
+    <Modal close={close}>
+      <div className="sheetKicker">Share Trip</div>
+      <h2>Invite collaborators</h2>
+      <p className="modalSubcopy">Send this trip to someone else. Once Supabase auth is wired in, accepted collaborators will see live edits and shared itinerary updates.</p>
+      <div className="shareInputRow">
+        <input type="email" placeholder="Friend’s email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <button className="primaryBtn compact" onClick={invite}><UserPlus size={16} /> Invite</button>
+      </div>
+      <div className="shareLinkBox">
+        <b>Trip access</b>
+        <span>Collaborators can add ideas, vote, edit logistics, and update the itinerary.</span>
+      </div>
+      <div className="collabList">
+        <h3>Collaborators</h3>
+        {collaborators.length === 0 && <div className="softEmpty">No collaborators yet</div>}
+        {collaborators.map((c) => (
+          <div className="collabRow" key={c.id}>
+            <div className="avatarCircle">{(c.email || "?")[0].toUpperCase()}</div>
+            <div><b>{c.email}</b><span>{c.status === "accepted" ? "Accepted" : "Pending invite"}</span></div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
 }
+
+function NotificationsModal({ trips, activeTrip, close }) {
+  const activity = [
+    ...(activeTrip?.activityLog || []),
+    ...trips.flatMap((t) => (t.collaborators || []).map((c) => ({ id: `${t.id}-${c.id}`, type: "invite", text: `${c.email} was invited to ${t.name}`, createdAt: c.invitedAt || t.createdAt || new Date().toISOString() }))),
+  ].slice(0, 12);
+  return (
+    <Modal close={close}>
+      <div className="sheetKicker">Notifications</div>
+      <h2>What’s new</h2>
+      <div className="notificationList">
+        {activity.length === 0 ? (
+          <div className="softEmpty">No notifications yet. Invites, accepted trips, edits, votes, and assignments will show up here.</div>
+        ) : activity.map((item) => (
+          <div className="notificationRow" key={item.id}>
+            <div className="notifIcon"><Bell size={15} /></div>
+            <div><b>{item.text}</b><span>{item.createdAt ? new Date(item.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Just now"}</span></div>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function ProfileModal({ trips, close }) {
+  const now = todayIso();
+  const futureTrips = trips.filter((t) => (t.endDate || "9999-12-31") >= now).length;
+  const pastTrips = trips.filter((t) => t.endDate && t.endDate < now).length;
+  const friends = Array.from(new Set(trips.flatMap((t) => (t.collaborators || []).map((c) => c.email))));
+  return (
+    <Modal close={close}>
+      <div className="sheetKicker">My Profile</div>
+      <div className="profileHero">
+        <div className="profileAvatar">J</div>
+        <div><h2>Jay</h2><p>Your friends, trips, groups, and travel profile will live here.</p></div>
+      </div>
+      <div className="profileStats">
+        <div><b>{friends.length}</b><span>Friends</span></div>
+        <div><b>{pastTrips}</b><span>Past trips</span></div>
+        <div><b>{futureTrips}</b><span>Future trips</span></div>
+      </div>
+      <div className="profileSection">
+        <h3>Friends</h3>
+        {friends.length === 0 ? <div className="softEmpty">No friends yet. Invite someone to a trip to start building your travel circle.</div> : friends.map((f) => <div className="collabRow" key={f}><div className="avatarCircle">{f[0].toUpperCase()}</div><div><b>{f}</b><span>Friend</span></div></div>)}
+      </div>
+      <button className="ghostBtn full"><LogOut size={16} /> Log out</button>
+    </Modal>
+  );
+}
+
+function SettingsModal({ theme, setTheme, close }) { return <Modal close={close}><h2>Settings</h2><div className="segmented"><button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button><button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button></div><div className="profileBox"><User /><div><b>Profile</b><p>Your public profile, followers, saved trips, and groups will live here later.</p></div></div></Modal>; }
 function Modal({ children, close }) { return <div className="modalBackdrop" onMouseDown={close}><div className="modal" onMouseDown={(e) => e.stopPropagation()}><button className="closeBtn" onClick={close}><X /></button>{children}</div></div>; }
 function defaultTimeForCategory(category) { return category === "breakfast" ? "09:30" : category === "lunch" ? "12:30" : category === "dinner" ? "19:30" : category === "drinks" ? "21:00" : "14:00"; }
 
 const css = `
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer}.app{min-height:100vh;color:var(--text);background:radial-gradient(circle at top left,var(--glow),transparent 38%),linear-gradient(135deg,var(--bg1),var(--bg2));padding-bottom:112px}.dark{--bg1:#050b17;--bg2:#142034;--panel:rgba(255,255,255,.075);--panel2:rgba(255,255,255,.105);--text:#f8fafc;--muted:#aeb8ca;--line:rgba(255,255,255,.13);--input:rgba(255,255,255,.095);--glow:rgba(249,115,22,.24);--chip:rgba(255,255,255,.09);--shadow:rgba(0,0,0,.22)}.light{--bg1:#fff7ed;--bg2:#eaf3ff;--panel:rgba(255,255,255,.76);--panel2:#fff;--text:#172033;--muted:#607089;--line:rgba(27,37,59,.12);--input:rgba(255,255,255,.82);--glow:rgba(249,115,22,.18);--chip:#f2f5fa;--shadow:rgba(25,34,50,.11)}.shell{width:min(1120px,100%);margin:0 auto;padding:18px}.desktopTop{display:none}.mobileHero{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:14px 2px 8px}.mobileHeroCopy{min-width:0;flex:1}.mobileTripTitle{border:0;background:transparent;color:var(--text);padding:0;margin:5px 0 8px;display:flex;align-items:center;gap:8px;max-width:100%;text-align:left}.mobileTripTitle span{font-size:31px;line-height:1;letter-spacing:-.03em;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobileTripTitle em{font-style:normal;color:#fb923c;font-size:22px;line-height:1;transform:translateY(-1px)}.eyebrow{color:#fb923c;text-transform:uppercase;font-weight:950;font-size:11px;letter-spacing:.16em}.mobileHero h1{font-size:31px;line-height:1;margin:5px 0 8px;letter-spacing:-.03em}.mobileHero p{margin:0;color:var(--muted);font-size:13px}.controlStrip{position:sticky;top:8px;z-index:5;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin:8px 0 18px;padding:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 76%,transparent);backdrop-filter:blur(20px);border-radius:26px;box-shadow:0 18px 45px var(--shadow)}.tripMini{min-width:0}.tripMini span{display:block;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tripMini small{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.controlStrip .primaryBtn{grid-column:1/-1}.primaryBtn,.orangeBtn{border:0;border-radius:999px;background:linear-gradient(135deg,#ff9d3d,#ff6b12);color:#fff;font-weight:950;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 15px;box-shadow:0 14px 28px rgba(249,115,22,.26)}.ghostBtn,.iconBtn{border:1px solid var(--line);background:var(--chip);color:var(--text);border-radius:999px;padding:10px 12px;display:inline-flex;align-items:center;justify-content:center;gap:7px}.small{font-size:12px;padding:8px 10px}.big{font-size:16px;padding:14px 18px}.full{width:100%}.pageStack{display:flex;flex-direction:column;gap:16px}.appSectionHead h2,.sectionHead h2{font-size:28px;letter-spacing:-.035em;margin:0 0 6px}.appSectionHead p,.sectionHead p{margin:0;color:var(--muted);font-size:15px;line-height:1.35}.addCard,.categoryBlock,.logCard,.travelerCard,.dayTimeline,.empty,.emptyMini,.planningCategoryCard,.logSummaryCard,.helperCard{border:1px solid var(--line);background:var(--panel);border-radius:26px;box-shadow:0 18px 45px var(--shadow);backdrop-filter:blur(18px)}input,select,textarea{width:100%;max-width:100%;min-width:0;border:1px solid var(--line);background:var(--input);color:var(--text);border-radius:18px;padding:13px 14px;outline:none;display:block;box-sizing:border-box}input[type="date"],input[type="time"]{width:100%;max-width:100%;min-width:0;-webkit-appearance:none;appearance:none}textarea{min-height:92px;resize:vertical}.split2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;width:100%;max-width:100%;min-width:0;overflow:hidden}.fieldLabel{font-size:12px;font-weight:950;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:2px 0 -5px}.plannerTip{display:flex;gap:12px;align-items:flex-start;border:1px solid rgba(251,146,60,.22);background:linear-gradient(135deg,rgba(251,146,60,.14),rgba(255,255,255,.055));border-radius:24px;padding:15px}.tipBulb{font-size:26px}.plannerTip b{display:block}.plannerTip p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.35}.categoryStack{display:flex;flex-direction:column;gap:14px}.planningCategoryCard{padding:0;overflow:hidden}.categoryAddRow{width:100%;border:0;background:transparent;color:var(--text);padding:15px;display:grid;grid-template-columns:44px 1fr auto 44px;gap:12px;align-items:center;text-align:left}.categoryIconBubble,.summaryIcon,.emptyCircle{width:44px;height:44px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.06));border:1px solid var(--line);font-size:22px}.categoryCopy b{display:block;font-size:18px;letter-spacing:-.02em}.categoryCopy span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.categoryCount{min-width:27px;height:27px;border-radius:999px;display:grid;place-items:center;background:var(--chip);color:var(--muted);font-weight:950;font-size:12px}.plusBubble{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.12);border:1px solid var(--line);color:var(--text)}.compactIdeaList{border-top:1px solid var(--line);padding:12px 12px 14px}.topPick{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:10px 12px;margin-bottom:8px;border-radius:17px;background:linear-gradient(135deg,rgba(251,146,60,.14),rgba(255,255,255,.06))}.topPick span{font-size:10px;color:#fb923c;text-transform:uppercase;font-weight:950;letter-spacing:.08em}.topPick b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.topPick small{font-size:11px;color:var(--muted)}.ideaCard{border:1px solid var(--line);background:var(--panel2);border-radius:20px;padding:12px;display:flex;gap:12px;align-items:center;margin-top:8px;text-align:left;color:var(--text);width:100%}.ideaMain{flex:1;min-width:0}.ideaMain b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ideaMain span,.ideaMain p{display:block;color:var(--muted);font-size:12px;margin:4px 0 0}.votePill{display:grid;grid-template-columns:26px 24px 26px;align-items:center;background:var(--chip);border-radius:999px;padding:4px}.votePill button{border:0;background:transparent;color:var(--text);font-weight:950}.votePill strong{text-align:center;font-size:12px}.sheetKicker{color:#fb923c;text-transform:uppercase;font-weight:950;letter-spacing:.12em;font-size:11px}.dayHeader{display:flex;justify-content:space-between;align-items:end;margin-bottom:13px}.dayHeader span{font-size:18px;font-weight:950}.dayHeader small{color:var(--muted)}.timelineItem{width:100%;display:grid;grid-template-columns:74px 1fr;gap:10px;border:0;background:transparent;color:var(--text);text-align:left;padding:0;margin:0 0 12px}.timeRail{display:flex;flex-direction:column;align-items:flex-end;gap:8px;color:#fb923c;font-size:12px;font-weight:900;padding-top:10px}.timeRail i{width:2px;flex:1;min-height:58px;background:linear-gradient(#fb923c,transparent);border-radius:999px}.timelineCard{background:var(--panel2);border:1px solid var(--line);border-radius:24px;padding:14px}.pill{display:inline-flex;background:var(--chip);border-radius:999px;padding:5px 9px;color:var(--muted);font-size:11px;font-weight:900}.timelineCard h3{margin:9px 0 5px;font-size:17px}.timelineCard p{margin:0;color:var(--muted);font-size:13px;line-height:1.35}.metaLine{display:flex;gap:11px;margin-top:11px;color:var(--muted);font-size:12px}.metaLine span{display:flex;align-items:center;gap:4px}.calendarTop{display:flex;align-items:center;justify-content:space-between}.calendarTop h2{margin:0}.realCalendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.weekday{font-size:11px;color:var(--muted);text-align:center;font-weight:900}.calCell{min-height:78px;border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:7px;overflow:hidden}.calCell>span{font-size:12px;color:var(--muted);font-weight:900}.calCell.muted{opacity:.42}.tripBar{width:100%;border:0;background:linear-gradient(135deg,#fb923c,#ec4899);color:white;border-radius:999px;padding:4px 6px;font-size:10px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.segmented{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);padding:5px;border-radius:999px;gap:5px}.segmented button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:950;padding:11px;display:flex;align-items:center;justify-content:center;gap:7px}.segmented button.active{background:linear-gradient(135deg,rgba(251,146,60,.28),rgba(255,255,255,.08));color:var(--text);box-shadow:0 8px 20px rgba(0,0,0,.1)}.fancySegmented{margin-top:-2px}.logisticsStack,.polishedLogisticsStack{display:flex;flex-direction:column;gap:14px}.logisticsEmpty{text-align:center;border:1px dashed var(--line);background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.035));border-radius:26px;padding:28px 24px;display:grid;justify-items:center;gap:10px}.logisticsEmpty h3{margin:4px 0 0;font-size:20px}.logisticsEmpty p{margin:0 0 9px;color:var(--muted);line-height:1.35}.logisticsEmpty .emptyCircle{width:62px;height:62px;border-radius:50%;font-size:24px;color:var(--muted)}.logSummaryCard{overflow:hidden}.summaryButton{width:100%;border:0;background:transparent;color:var(--text);display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:12px;text-align:left;padding:14px}.summaryButton b{display:block;font-size:17px}.summaryButton span,.summaryButton small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.summaryChevron{border:1px solid var(--line);border-radius:999px;padding:7px 10px!important;font-weight:950;color:var(--text)!important;background:var(--chip)}.summaryDrawer{border-top:1px solid var(--line);padding:14px;display:grid;gap:10px;width:100%;max-width:100%;min-width:0;overflow:hidden}.helperCard{padding:18px}.helperCard b{font-size:16px}.helperCard p{color:var(--muted);margin:6px 0 0;font-size:13px;line-height:1.4}.flightLeg{border:1px solid var(--line);background:var(--panel2);border-radius:22px;padding:12px;display:grid;gap:10px}.flightLegHeader{display:flex;justify-content:space-between;align-items:center}.danger{color:#fb7185}.textDanger{border:0;background:transparent;color:#fb7185;font-weight:900;padding:10px}.softEmpty{border:1px dashed var(--line);border-radius:20px;padding:18px;text-align:center;color:var(--muted)}.empty{text-align:center;padding:42px 20px}.emptyIcon{font-size:44px}.empty h2{font-size:28px;margin:9px 0}.empty p{color:var(--muted);max-width:430px;margin:0 auto 20px}.emptyMini{text-align:center;color:var(--muted);padding:18px}.mobileNav{position:fixed;left:12px;right:12px;bottom:14px;z-index:30;height:76px;display:grid;grid-template-columns:1fr 1fr 70px 1fr 1fr;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 86%,transparent);backdrop-filter:blur(22px);border-radius:28px;box-shadow:0 18px 50px rgba(0,0,0,.25)}.mobileNav button{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:900}.mobileNav button.active{color:#fb923c}.mobileNav .addRound{width:58px;height:58px;border-radius:22px;background:linear-gradient(135deg,#fb923c,#f97316);color:white;justify-self:center;align-self:center;display:flex!important;align-items:center!important;justify-content:center!important;padding:0!important;line-height:0!important;box-shadow:0 12px 25px rgba(249,115,22,.33)}.mobileNav .addRound svg{display:block;transform:translateY(1px);margin:0}.tripSwitchList{display:grid;gap:10px}.tripSwitchItem{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:22px;padding:14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;text-align:left}.tripSwitchItem.active{border-color:rgba(251,146,60,.5);background:linear-gradient(135deg,rgba(251,146,60,.18),rgba(255,255,255,.06))}.tripSwitchItem b{display:block;font-size:16px}.tripSwitchItem span{display:block;color:var(--muted);font-size:12px;margin-top:4px}.tripSwitchItem strong{font-size:11px;color:#fb923c;text-transform:uppercase;letter-spacing:.08em}.modalBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:end center;z-index:60;padding:14px}.modal{width:min(560px,100%);max-height:86vh;overflow:auto;background:linear-gradient(145deg,var(--bg1),var(--bg2));border:1px solid var(--line);border-radius:30px;padding:20px;display:grid;gap:12px;color:var(--text);box-shadow:0 30px 80px rgba(0,0,0,.35)}.closeBtn{justify-self:end;border:0;background:var(--chip);color:var(--text);border-radius:999px;width:36px;height:36px}.modal h2{margin:0}.profileBox{display:flex;gap:12px;border:1px solid var(--line);border-radius:22px;padding:14px;background:var(--panel)}.profileBox p{margin:4px 0 0;color:var(--muted)}
 
-.authShell{min-height:100vh;display:grid;place-items:center;padding:24px}.authCard{width:min(430px,100%);border:1px solid var(--line);background:var(--panel);border-radius:34px;padding:26px;box-shadow:0 28px 80px rgba(0,0,0,.34);backdrop-filter:blur(22px);text-align:left}.authLogo{width:58px;height:58px;border-radius:22px;background:linear-gradient(135deg,#fb923c,#ec4899);display:grid;place-items:center;font-size:28px;margin-bottom:18px;box-shadow:0 18px 34px rgba(249,115,22,.28)}.authCard h1{font-size:34px;line-height:1;margin:6px 0 10px}.authCard p{color:var(--muted);line-height:1.45;margin:0 0 20px}.authForm{display:grid;gap:12px}.authMessage{border:1px solid var(--line);background:var(--chip);border-radius:18px;padding:12px;color:var(--muted);font-size:13px}.authSwitch{width:100%;border:0;background:transparent;color:#fb923c;font-weight:900;margin-top:14px;padding:10px}.primaryBtn:disabled{opacity:.65;cursor:not-allowed}.profileBox small{display:block;margin-top:4px;color:var(--muted);line-height:1.35}
+.heroActions{display:flex;align-items:center;gap:8px;flex-shrink:0}.heroIcon{width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.10);color:var(--text);display:flex;align-items:center;justify-content:center;position:relative}.notificationDot{position:relative}.notificationDot:after{content:"";position:absolute;right:7px;top:7px;width:8px;height:8px;border-radius:999px;background:#fb923c;border:2px solid rgba(7,17,32,.92)}.stripActions{display:flex;align-items:center;gap:8px}.iconOnly{width:44px;height:44px;padding:0}.modalSubcopy{margin:-4px 0 4px;color:var(--muted);font-size:13px;line-height:1.4}.shareInputRow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.primaryBtn.compact{height:52px;padding:0 16px}.shareLinkBox{border:1px solid var(--line);background:linear-gradient(135deg,rgba(251,146,60,.14),rgba(255,255,255,.05));border-radius:22px;padding:14px;display:grid;gap:4px}.shareLinkBox span{color:var(--muted);font-size:13px;line-height:1.4}.collabList,.notificationList,.profileSection{display:grid;gap:10px}.collabList h3,.profileSection h3{margin:4px 0 0}.collabRow,.notificationRow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:12px}.collabRow b,.notificationRow b{display:block;font-size:14px}.collabRow span,.notificationRow span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.avatarCircle,.notifIcon{width:38px;height:38px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(251,146,60,.30),rgba(255,255,255,.08));color:#fff;font-weight:950}.profileHero{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:center}.profileHero h2{margin:0}.profileHero p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.35}.profileAvatar{width:58px;height:58px;border-radius:22px;background:linear-gradient(135deg,#fb923c,#f97316);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:950;color:#fff;box-shadow:0 14px 26px rgba(249,115,22,.25)}.profileStats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.profileStats div{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:14px;text-align:center}.profileStats b{display:block;font-size:22px}.profileStats span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
 
 @media (min-width: 820px){.app{padding-bottom:40px}.desktopTop{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:14px 22px;background:color-mix(in srgb,var(--panel2) 80%,transparent);backdrop-filter:blur(22px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.brand small{display:block;color:var(--muted);font-size:11px}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,#fb923c,#ec4899)}.tripSelect{width:190px}.desktopNav{display:flex;gap:6px;background:var(--chip);border-radius:999px;padding:5px}.desktopNav button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:900;padding:9px 12px}.desktopNav button.active{background:var(--panel2);color:var(--text)}.mobileHero,.mobileNav{display:none}.shell{padding:28px}.controlStrip{top:80px;grid-template-columns:1fr auto auto}.controlStrip .primaryBtn{grid-column:auto}.categoryStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.pageStack{gap:20px}.realCalendar{gap:8px}.calCell{min-height:122px;border-radius:20px}.timelineItem{grid-template-columns:110px 1fr}.timelineCard h3{font-size:20px}.logisticsStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.modalBackdrop{place-items:center}}
 @media (max-width: 430px){.shell{padding:14px}.mobileTripTitle span{font-size:27px}.split2{grid-template-columns:minmax(0,1fr);width:100%;max-width:100%;overflow:hidden}.calCell{min-height:70px;padding:5px;border-radius:12px}.tripBar{font-size:9px}.categoryAddRow{grid-template-columns:40px 1fr auto 40px;padding:14px 13px}.categoryIconBubble{width:40px;height:40px}.plusBubble{width:38px;height:38px}.summaryButton{grid-template-columns:40px 1fr auto}.summaryChevron{font-size:11px;padding:7px 8px!important}}
