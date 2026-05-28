@@ -551,7 +551,28 @@ function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, c
         ))}
       </div>
 
-      {ideas.length ? <div className="idea-grid">{ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} onVote={() => updateIdea(idea.id, { votes: idea.votes + 1 })} />)}</div> : <div className="empty-state">No ideas here yet. Add your first spot above.</div>}
+      {ideas.length ? (
+        <div className="idea-category-list">
+          {CATEGORIES.filter((cat) => activeCategory === "all" || cat.key === activeCategory).map((cat) => {
+            const categoryIdeas = ideas.filter((idea) => idea.category === cat.key);
+            if (!categoryIdeas.length) return null;
+            return (
+              <section className="idea-category-section" key={cat.key}>
+                <div className="idea-category-title">
+                  <span className="category-title-badge" style={{ "--accent": cat.accent }}>{cat.emoji}</span>
+                  <div>
+                    <h4>{cat.label}</h4>
+                    <p>{categoryIdeas.length} idea{categoryIdeas.length === 1 ? "" : "s"}</p>
+                  </div>
+                </div>
+                <div className="idea-grid">
+                  {categoryIdeas.map((idea) => <IdeaCard key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} onVote={() => updateIdea(idea.id, { votes: idea.votes + 1 })} />)}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : <div className="empty-state">No ideas here yet. Add your first spot above.</div>}
     </section>
   );
 }
@@ -889,6 +910,12 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 .category-chip span { color: #93c5fd; margin-left: 5px; }
 .category-chip.active { background: white; color: #0f172a; }
 .idea-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.idea-category-list { display: grid; gap: 22px; }
+.idea-category-section { display: grid; gap: 12px; }
+.idea-category-title { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
+.idea-category-title h4 { margin: 0; font-size: 20px; letter-spacing: -.045em; }
+.idea-category-title p { margin: 2px 0 0; color: #94a3b8; font-weight: 850; font-size: 12px; }
+.category-title-badge { width: 40px; height: 40px; border-radius: 16px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 22%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 18%, transparent); }
 .idea-card { border: 1px solid rgba(255,255,255,.12); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.045)); border-radius: 24px; padding: 16px; cursor: pointer; position: relative; overflow: hidden; min-height: 160px; }
 .idea-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--accent); }
 .idea-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.24); transition: .18s ease; }
@@ -940,7 +967,7 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 .month-card h4 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
 .month-card p { margin: 6px 0 12px; color: #94a3b8; font-weight: 850; font-size: 13px; }
 .month-items { display: grid; gap: 7px; }
-.modal-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(2,6,23,.74); display: grid; place-items: center; padding: 20px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(2,6,23,.74); display: grid; place-items: center; padding: 20px; }
 .modal { width: min(580px, 100%); border-radius: 30px; padding: 24px; position: relative; max-height: 92vh; overflow: auto; }
 .modal h3 { margin: 4px 38px 18px 0; font-size: 28px; letter-spacing: -.05em; }
 .modal label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 13px; margin-bottom: 12px; }
@@ -997,25 +1024,52 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 
 @media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .logistics-grid, .saved-logistics { grid-template-columns: 1fr; } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
-  .app-shell { padding-bottom: 96px; }
-  .hero, .workspace { padding: 14px; }
-  .topbar { align-items: center; padding-top: 4px; }
-  .brand-left { min-width: 0; }
-  .brand-mark { width: 44px; height: 44px; border-radius: 16px; }
+  .app-shell { padding-bottom: 120px; }
+  .hero { padding: 16px 14px 10px; }
+  .workspace { padding: 14px 14px calc(150px + env(safe-area-inset-bottom)); }
+  .topbar { align-items: center; padding-top: 4px; gap: 10px; }
+  .brand-left { min-width: 0; gap: 10px; }
+  .brand-left h1 { font-size: 20px; }
+  .brand-left .eyebrow { display: none; }
+  .brand-mark { width: 42px; height: 42px; border-radius: 16px; }
   .desktop-nav-shell, .top-actions, .page-tabs { display: none !important; }
-  .mobile-top-actions { display: flex; }
-  .mobile-bottom-nav { display: grid; }
-  .hero-content { padding: 34px 0 18px; gap: 18px; }
-  .hero h2 { font-size: 42px; }
-  .hero-subtitle { font-size: 15px; line-height: 1.55; }
-  .hero-card { border-radius: 26px; padding: 18px; }
-  .workspace { padding-bottom: 120px; }
+  .mobile-top-actions { display: flex; gap: 8px; }
+  .mobile-top-actions .ghost-button { padding: 10px 12px; border-radius: 16px; font-size: 12px; }
+  .mobile-bottom-nav { display: grid; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); padding: 8px; border-radius: 26px; }
+  .mobile-nav-button { height: 52px; border-radius: 18px; }
+  .mobile-nav-add { width: 62px; height: 62px; border-radius: 23px; }
+  .hero-content { padding: 26px 0 12px; gap: 16px; }
+  .hero h2 { font-size: 34px; line-height: .96; }
+  .hero-subtitle { font-size: 14px; line-height: 1.5; }
+  .hero-meta { gap: 8px; }
+  .hero-meta span { width: 100%; justify-content: flex-start; }
+  .hero-card, .panel { border-radius: 28px; padding: 16px; }
+  .panel { box-shadow: 0 18px 55px rgba(0,0,0,.22); }
+  .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .section-heading h3 { font-size: 28px; }
+  .add-form { grid-template-columns: 1fr; gap: 12px; padding: 14px; border-radius: 24px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.10); margin-bottom: 18px; }
+  .add-form textarea { grid-column: auto; min-height: 88px; }
+  input, select, textarea { min-height: 48px; border-radius: 17px; font-size: 15px; }
+  .primary-button, .ghost-button, .danger-button { min-height: 48px; justify-content: center; }
+  .category-cloud { display: flex; gap: 9px; overflow-x: auto; padding: 2px 2px 12px; margin: 0 -2px 4px; scroll-snap-type: x proximity; }
+  .category-cloud::-webkit-scrollbar { display: none; }
+  .category-chip { flex: 0 0 auto; scroll-snap-align: start; }
+  .idea-category-list { gap: 26px; }
+  .idea-category-section { gap: 12px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); }
+  .light-mode .idea-category-section { background: rgba(255,255,255,.70); border-color: rgba(15,23,42,.08); }
+  .idea-category-title { padding: 0; }
+  .idea-category-title h4 { font-size: 22px; }
+  .category-title-badge { width: 42px; height: 42px; border-radius: 16px; }
   .add-form, .two-col, .three-col, .date-time-row, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; }
-  .add-form textarea { grid-column: auto; }
+  .idea-grid { gap: 12px; }
+  .idea-card { border-radius: 22px; padding: 14px; }
+  .idea-card h4 { font-size: 18px; }
+  .day-card, .logistics-form, .logistics-card, .calendar-cell, .month-card { border-radius: 24px; }
   .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; }
   .calendar-controls { justify-content: flex-start; }
-  .section-heading { align-items: flex-start; flex-direction: column; }
-  .modal-backdrop { align-items: end; padding: 12px; }
-  .modal { border-radius: 28px 28px 20px 20px; width: 100%; max-height: 88vh; }
+  .modal-backdrop { align-items: end; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .modal { border-radius: 28px 28px 20px 20px; width: 100%; max-height: calc(100vh - 32px); padding: 22px 18px calc(110px + env(safe-area-inset-bottom)); }
+  .modal-actions { position: sticky; bottom: 0; padding-top: 12px; background: linear-gradient(to top, rgba(15,23,42,.98), rgba(15,23,42,.74), transparent); flex-direction: column-reverse; }
+  .light-mode .modal-actions { background: linear-gradient(to top, rgba(255,255,255,.98), rgba(255,255,255,.82), transparent); }
 }
 `;
