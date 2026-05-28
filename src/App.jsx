@@ -1,319 +1,315 @@
 import React, { useMemo, useState } from "react";
+import { CalendarDays, Plus, Sparkles, Clock, Link as LinkIcon, MapPin, Users, Wand2, X, Edit3, Trash2, CheckCircle2 } from "lucide-react";
 
-const categories = [
-  { name: "Breakfast", emoji: "🥐", accent: "bg-amber-100 text-amber-800 border-amber-200" },
-  { name: "Lunch", emoji: "🥗", accent: "bg-lime-100 text-lime-800 border-lime-200" },
-  { name: "Dinner", emoji: "🍝", accent: "bg-rose-100 text-rose-800 border-rose-200" },
-  { name: "Activities", emoji: "🎟️", accent: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  { name: "Cafes", emoji: "☕", accent: "bg-orange-100 text-orange-800 border-orange-200" },
-  { name: "Bars", emoji: "🍸", accent: "bg-purple-100 text-purple-800 border-purple-200" },
-  { name: "Shopping", emoji: "🛍️", accent: "bg-pink-100 text-pink-800 border-pink-200" },
-  { name: "Must-do", emoji: "⭐", accent: "bg-sky-100 text-sky-800 border-sky-200" },
+const CATEGORIES = [
+  { key: "breakfast", label: "Breakfast", emoji: "🥐", accent: "#F59E0B" },
+  { key: "lunch", label: "Lunch", emoji: "🥗", accent: "#10B981" },
+  { key: "dinner", label: "Dinner", emoji: "🍝", accent: "#EF4444" },
+  { key: "activity", label: "Activity", emoji: "🎟️", accent: "#8B5CF6" },
+  { key: "drinks", label: "Drinks", emoji: "🍸", accent: "#EC4899" },
+  { key: "sightseeing", label: "Sightseeing", emoji: "🏛️", accent: "#3B82F6" },
+  { key: "exploring", label: "Exploring", emoji: "🚶", accent: "#14B8A6" },
 ];
 
-const demoTripDays = [
-  { id: "day-1", label: "Fri", date: "2026-07-10", vibe: "Arrival + easy wins" },
-  { id: "day-2", label: "Sat", date: "2026-07-11", vibe: "Big exploring day" },
-  { id: "day-3", label: "Sun", date: "2026-07-12", vibe: "Cute neighborhoods" },
-  { id: "day-4", label: "Mon", date: "2026-07-13", vibe: "Last perfect bites" },
+const sampleIdeas = [
+  {
+    id: crypto.randomUUID(),
+    title: "Neighborhood cafe with pastries",
+    category: "breakfast",
+    link: "https://maps.google.com",
+    notes: "Good first morning option. Add the real link later.",
+    votes: 5,
+    date: "",
+    time: "09:30",
+  },
+  {
+    id: crypto.randomUUID(),
+    title: "Long lunch somewhere cute",
+    category: "lunch",
+    link: "",
+    notes: "Save a few top lunch spots here and vote with friends.",
+    votes: 3,
+    date: "",
+    time: "13:00",
+  },
+  {
+    id: crypto.randomUUID(),
+    title: "Fancy dinner reservation",
+    category: "dinner",
+    link: "",
+    notes: "Mark once booked.",
+    votes: 7,
+    date: "",
+    time: "20:00",
+  },
+  {
+    id: crypto.randomUUID(),
+    title: "Museum / gallery stop",
+    category: "sightseeing",
+    link: "",
+    notes: "Could pair with nearby lunch.",
+    votes: 4,
+    date: "",
+    time: "11:30",
+  },
 ];
 
-const demoIdeas = [
-  { id: "idea-1", title: "Cute neighborhood cafe", category: "Breakfast", votes: 6, link: "", notes: "Good for first morning. Casual and walkable.", dayId: null, time: "09:30", status: "idea" },
-  { id: "idea-2", title: "Famous brunch spot", category: "Breakfast", votes: 4, link: "", notes: "Make reservation if this wins.", dayId: null, time: "10:00", status: "idea" },
-  { id: "idea-3", title: "Museum afternoon", category: "Activities", votes: 8, link: "", notes: "Book tickets ahead and pair with a cafe nearby.", dayId: null, time: "13:00", status: "idea" },
-  { id: "idea-4", title: "Rooftop dinner", category: "Dinner", votes: 9, link: "", notes: "Splurge meal. Best sunset option.", dayId: null, time: "20:00", status: "idea" },
-  { id: "idea-5", title: "Cocktail bar", category: "Bars", votes: 5, link: "", notes: "After dinner. Good group photos.", dayId: null, time: "22:00", status: "idea" },
-];
-
-function categoryMeta(name) {
-  return categories.find((category) => category.name === name) || categories[0];
+function formatDateLabel(dateString) {
+  if (!dateString) return "Unscheduled";
+  const date = new Date(dateString + "T12:00:00");
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-function defaultTime(category) {
-  return {
-    Breakfast: "09:30",
-    Lunch: "13:00",
-    Dinner: "20:00",
-    Activities: "15:00",
-    Cafes: "11:00",
-    Bars: "22:00",
-    Shopping: "16:00",
-    "Must-do": "12:00",
-  }[category] || "12:00";
+function getDateRange(start, end) {
+  if (!start || !end) return [];
+  const dates = [];
+  const cursor = new Date(start + "T12:00:00");
+  const last = new Date(end + "T12:00:00");
+  if (cursor > last) return [];
+  while (cursor <= last) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
 }
 
-function shortDate(date) {
-  return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function getCategory(categoryKey) {
+  return CATEGORIES.find((cat) => cat.key === categoryKey) || CATEGORIES[0];
 }
 
 export default function App() {
-  const [tripName, setTripName] = useState("Barcelona Group Trip");
-  const [days, setDays] = useState(demoTripDays);
-  const [ideas, setIdeas] = useState(demoIdeas);
-  const [selectedCard, setSelectedCard] = useState(null);
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [newIdea, setNewIdea] = useState({ title: "", category: "Breakfast", link: "", notes: "" });
+  const [trip, setTrip] = useState({
+    name: "Mexico City Birthday Trip",
+    location: "Mexico City",
+    startDate: "2026-06-18",
+    endDate: "2026-06-22",
+  });
 
-  const boardIdeas = useMemo(() => ideas.filter((idea) => !idea.dayId), [ideas]);
-  const filteredBoardIdeas = useMemo(() => {
-    const source = activeCategory === "All" ? boardIdeas : boardIdeas.filter((idea) => idea.category === activeCategory);
-    return [...source].sort((a, b) => b.votes - a.votes);
-  }, [activeCategory, boardIdeas]);
-  const scheduledIdeas = useMemo(() => ideas.filter((idea) => idea.dayId), [ideas]);
-  const totalVotes = ideas.reduce((sum, idea) => sum + idea.votes, 0);
-  const topPick = [...ideas].sort((a, b) => b.votes - a.votes)[0];
+  const [ideas, setIdeas] = useState(sampleIdeas);
+  const [activeCategory, setActiveCategory] = useState("all");
+  const [editingIdea, setEditingIdea] = useState(null);
+  const [showTripEditor, setShowTripEditor] = useState(false);
+  const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "" });
 
-  function addIdea(e) {
-    e.preventDefault();
+  const tripDates = useMemo(() => getDateRange(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
+  const scheduledIdeas = ideas.filter((idea) => idea.date).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const unscheduledIdeas = ideas.filter((idea) => !idea.date);
+  const filteredIdeas = ideas.filter((idea) => activeCategory === "all" || idea.category === activeCategory);
+
+  const categoryCounts = CATEGORIES.reduce((acc, cat) => {
+    acc[cat.key] = ideas.filter((idea) => idea.category === cat.key).length;
+    return acc;
+  }, {});
+
+  function addIdea(event) {
+    event.preventDefault();
     if (!newIdea.title.trim()) return;
-    const card = {
-      id: crypto.randomUUID(),
-      title: newIdea.title.trim(),
-      category: newIdea.category,
-      link: newIdea.link.trim(),
-      notes: newIdea.notes.trim(),
-      votes: 0,
-      dayId: null,
-      time: defaultTime(newIdea.category),
-      status: "idea",
+    setIdeas((current) => [
+      {
+        id: crypto.randomUUID(),
+        title: newIdea.title.trim(),
+        category: newIdea.category,
+        link: newIdea.link.trim(),
+        notes: newIdea.notes.trim(),
+        votes: 0,
+        date: "",
+        time: "",
+      },
+      ...current,
+    ]);
+    setNewIdea({ title: "", category: newIdea.category, link: "", notes: "" });
+  }
+
+  function updateIdea(id, updates) {
+    setIdeas((current) => current.map((idea) => (idea.id === id ? { ...idea, ...updates } : idea)));
+    setEditingIdea((current) => (current?.id === id ? { ...current, ...updates } : current));
+  }
+
+  function deleteIdea(id) {
+    setIdeas((current) => current.filter((idea) => idea.id !== id));
+    setEditingIdea(null);
+  }
+
+  function autoBuildItinerary() {
+    if (!tripDates.length) return;
+
+    const defaultTimes = {
+      breakfast: "09:30",
+      lunch: "13:00",
+      dinner: "20:00",
+      activity: "15:00",
+      drinks: "22:00",
+      sightseeing: "11:00",
+      exploring: "17:00",
     };
-    setIdeas((prev) => [card, ...prev]);
-    setNewIdea({ title: "", category: "Breakfast", link: "", notes: "" });
-  }
 
-  function vote(id, amount) {
-    setIdeas((prev) => prev.map((idea) => idea.id === id ? { ...idea, votes: Math.max(0, idea.votes + amount) } : idea));
-  }
-
-  function updateCard(id, patch) {
-    setIdeas((prev) => prev.map((idea) => idea.id === id ? { ...idea, ...patch } : idea));
-    setSelectedCard((current) => current?.id === id ? { ...current, ...patch } : current);
-  }
-
-  function deleteCard(id) {
-    setIdeas((prev) => prev.filter((idea) => idea.id !== id));
-    setSelectedCard(null);
-  }
-
-  function buildItinerary() {
-    const selected = [];
-    const unscheduled = ideas.filter((idea) => !idea.dayId);
-
-    categories.forEach(({ name }) => {
-      const ranked = unscheduled.filter((idea) => idea.category === name).sort((a, b) => b.votes - a.votes);
-      const maxPerCategory = ["Breakfast", "Lunch", "Dinner"].includes(name) ? days.length : Math.min(days.length, 3);
-      selected.push(...ranked.slice(0, maxPerCategory));
+    const pickedByCategory = CATEGORIES.flatMap((cat) => {
+      const options = ideas
+        .filter((idea) => idea.category === cat.key)
+        .sort((a, b) => b.votes - a.votes)
+        .slice(0, tripDates.length);
+      return options.map((idea, index) => ({ idea, date: tripDates[index % tripDates.length], time: idea.time || defaultTimes[cat.key] }));
     });
 
-    const assigned = selected.map((idea, index) => ({
-      ...idea,
-      dayId: days[index % days.length].id,
-      time: idea.time || defaultTime(idea.category),
-      status: "planned",
-    }));
-
-    setIdeas((prev) => prev.map((idea) => assigned.find((item) => item.id === idea.id) || idea));
-  }
-
-  function clearItinerary() {
-    setIdeas((prev) => prev.map((idea) => ({ ...idea, dayId: null, status: "idea" })));
-  }
-
-  function moveCard(id, dayId) {
-    updateCard(id, { dayId, status: dayId ? "planned" : "idea" });
+    const assignments = new Map(pickedByCategory.map((item) => [item.idea.id, { date: item.date, time: item.time }]));
+    setIdeas((current) => current.map((idea) => (assignments.has(idea.id) ? { ...idea, ...assignments.get(idea.id) } : idea)));
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f1ea] text-[#201914]">
-      <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-32 top-10 h-72 w-72 rounded-full bg-rose-200/50 blur-3xl" />
-        <div className="absolute right-0 top-28 h-80 w-80 rounded-full bg-sky-200/60 blur-3xl" />
-        <div className="absolute bottom-0 left-1/2 h-96 w-96 rounded-full bg-amber-200/40 blur-3xl" />
-      </div>
+    <div className="app-shell">
+      <style>{styles}</style>
 
-      <header className="px-4 pt-5 md:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl overflow-hidden rounded-[2rem] border border-white/70 bg-white/75 shadow-xl shadow-stone-300/30 backdrop-blur-xl">
-          <div className="grid gap-6 p-5 md:grid-cols-[1.2fr_0.8fr] md:p-8">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-[#201914] px-3 py-1 text-xs font-black uppercase tracking-[0.2em] text-white">Trip Studio</span>
-                <span className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-bold text-stone-500">Collaborative planning board</span>
-              </div>
-              <input
-                value={tripName}
-                onChange={(e) => setTripName(e.target.value)}
-                className="mt-5 w-full bg-transparent text-4xl font-black tracking-tight outline-none md:text-6xl"
-              />
-              <p className="mt-3 max-w-2xl text-base font-medium leading-7 text-stone-600">
-                Drop ideas, let the group vote, then turn the winners into a polished itinerary you can edit in seconds.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button onClick={buildItinerary} className="rounded-2xl bg-[#201914] px-5 py-3 text-sm font-black text-white shadow-lg shadow-stone-400/40 transition hover:-translate-y-0.5">
-                  ✨ Build itinerary
-                </button>
-                <button onClick={clearItinerary} className="rounded-2xl border border-stone-200 bg-white px-5 py-3 text-sm font-black text-stone-700 transition hover:-translate-y-0.5">
-                  Reset board
-                </button>
-              </div>
-            </div>
+      <header className="hero">
+        <div className="hero-glow one" />
+        <div className="hero-glow two" />
+        <nav className="topbar">
+          <div className="brand-mark">✦</div>
+          <div>
+            <p className="eyebrow">Group trip planner</p>
+            <h1>It’s a Trip</h1>
+          </div>
+          <button className="ghost-button" onClick={() => setShowTripEditor(true)}>
+            <Edit3 size={16} /> Edit trip
+          </button>
+        </nav>
 
-            <div className="grid content-end gap-3 sm:grid-cols-2">
-              <Kpi label="Ideas" value={ideas.length} hint="submitted" />
-              <Kpi label="Planned" value={scheduledIdeas.length} hint="on itinerary" />
-              <Kpi label="Votes" value={totalVotes} hint="group signal" />
-              <Kpi label="Top pick" value={topPick ? topPick.votes : 0} hint={topPick ? topPick.title : "none yet"} />
+        <section className="hero-content">
+          <div>
+            <p className="pill"><Sparkles size={14} /> Collaborative itinerary board</p>
+            <h2>{trip.name}</h2>
+            <p className="hero-subtitle">
+              Add ideas by category, let everyone vote, then assign each spot to a date and time so your trip turns into a clean itinerary.
+            </p>
+            <div className="hero-meta">
+              <span><MapPin size={16} /> {trip.location || "Add location"}</span>
+              <span><CalendarDays size={16} /> {formatDateLabel(trip.startDate)} – {formatDateLabel(trip.endDate)}</span>
+              <span><Users size={16} /> Shareable with friends</span>
             </div>
           </div>
-        </div>
+
+          <div className="hero-card">
+            <p>Trip status</p>
+            <div className="stat-grid">
+              <div><strong>{ideas.length}</strong><span>Total ideas</span></div>
+              <div><strong>{scheduledIdeas.length}</strong><span>Scheduled</span></div>
+              <div><strong>{tripDates.length}</strong><span>Trip days</span></div>
+            </div>
+            <button className="primary-button full" onClick={autoBuildItinerary} disabled={!tripDates.length}>
+              <Wand2 size={17} /> Auto-build draft itinerary
+            </button>
+          </div>
+        </section>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-5 px-4 py-5 md:px-6 lg:grid-cols-[400px_1fr] lg:px-8">
-        <aside className="space-y-5 lg:sticky lg:top-5 lg:self-start">
-          <section className="rounded-[2rem] border border-white/70 bg-white/80 p-5 shadow-xl shadow-stone-300/20 backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-stone-400">Add spot</p>
-                <h2 className="mt-1 text-2xl font-black">New idea</h2>
-              </div>
-              <span className="rounded-2xl bg-stone-100 px-3 py-2 text-xl">📍</span>
+      <main className="main-grid">
+        <section className="panel add-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Add ideas</p>
+              <h3>Planning board</h3>
             </div>
+          </div>
 
-            <form onSubmit={addIdea} className="mt-5 space-y-3">
-              <Input value={newIdea.title} onChange={(e) => setNewIdea({ ...newIdea, title: e.target.value })} placeholder="Restaurant, museum, cafe..." />
-              <select value={newIdea.category} onChange={(e) => setNewIdea({ ...newIdea, category: e.target.value })} className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 font-bold outline-none focus:border-stone-500">
-                {categories.map((category) => <option key={category.name}>{category.name}</option>)}
-              </select>
-              <Input value={newIdea.link} onChange={(e) => setNewIdea({ ...newIdea, link: e.target.value })} placeholder="Paste Google Maps / TikTok / Resy link" />
-              <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Why should this make the trip?" className="min-h-24 w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 font-medium outline-none focus:border-stone-500" />
-              <button className="w-full rounded-2xl bg-rose-500 px-4 py-3 font-black text-white shadow-lg shadow-rose-200 transition hover:-translate-y-0.5">
-                Add to voting board
+          <form className="add-form" onSubmit={addIdea}>
+            <input value={newIdea.title} onChange={(e) => setNewIdea({ ...newIdea, title: e.target.value })} placeholder="Spot name, restaurant, activity..." />
+            <select value={newIdea.category} onChange={(e) => setNewIdea({ ...newIdea, category: e.target.value })}>
+              {CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}
+            </select>
+            <input value={newIdea.link} onChange={(e) => setNewIdea({ ...newIdea, link: e.target.value })} placeholder="Optional link" />
+            <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Notes, reservation details, why people should vote for it..." />
+            <button className="primary-button" type="submit"><Plus size={17} /> Add to trip</button>
+          </form>
+
+          <div className="category-cloud">
+            <button className={activeCategory === "all" ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory("all")}>All <span>{ideas.length}</span></button>
+            {CATEGORIES.map((cat) => (
+              <button key={cat.key} className={activeCategory === cat.key ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory(cat.key)}>
+                {cat.emoji} {cat.label} <span>{categoryCounts[cat.key]}</span>
               </button>
-            </form>
-          </section>
+            ))}
+          </div>
 
-          <section className="rounded-[2rem] border border-white/70 bg-white/80 p-5 shadow-xl shadow-stone-300/20 backdrop-blur-xl">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-stone-400">Voting board</p>
-                <h2 className="mt-1 text-2xl font-black">Group picks</h2>
-              </div>
-              <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-black text-stone-600">{filteredBoardIdeas.length} open</span>
+          <div className="idea-list">
+            {filteredIdeas.map((idea) => <IdeaCard key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} onVote={() => updateIdea(idea.id, { votes: idea.votes + 1 })} />)}
+          </div>
+        </section>
+
+        <section className="panel itinerary-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Scheduled plan</p>
+              <h3>Your itinerary</h3>
             </div>
+            <span className="mini-count">{unscheduledIdeas.length} unscheduled</span>
+          </div>
 
-            <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-              {["All", ...categories.map((category) => category.name)].map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setActiveCategory(category)}
-                  className={`shrink-0 rounded-full border px-3 py-2 text-xs font-black transition ${activeCategory === category ? "border-[#201914] bg-[#201914] text-white" : "border-stone-200 bg-white text-stone-600 hover:border-stone-400"}`}
-                >
-                  {category === "All" ? "All" : `${categoryMeta(category).emoji} ${category}`}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {filteredBoardIdeas.length === 0 && <EmptyState text="No open ideas here. Add one or reset the itinerary." />}
-              {filteredBoardIdeas.map((idea) => <Card key={idea.id} idea={idea} onOpen={() => setSelectedCard(idea)} onVote={vote} onMove={moveCard} days={days} compact />)}
-            </div>
-          </section>
-        </aside>
-
-        <section className="space-y-5">
-          <div className="rounded-[2rem] border border-white/70 bg-white/70 p-4 shadow-xl shadow-stone-300/20 backdrop-blur-xl">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-stone-400">Itinerary</p>
-                <h2 className="text-2xl font-black">Draft schedule</h2>
-              </div>
-              <p className="max-w-md text-sm font-medium text-stone-500">Click any card to edit its day, time, link, notes, votes, or category.</p>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              {days.map((day, dayIndex) => {
-                const dayCards = ideas.filter((idea) => idea.dayId === day.id).sort((a, b) => a.time.localeCompare(b.time));
+          {!tripDates.length ? (
+            <div className="empty-state">Add trip start and end dates to build an itinerary.</div>
+          ) : (
+            <div className="days-stack">
+              {tripDates.map((date) => {
+                const dayItems = scheduledIdeas.filter((idea) => idea.date === date);
                 return (
-                  <div key={day.id} className="min-h-[360px] rounded-[1.75rem] border border-stone-200 bg-[#fbfaf7] p-4">
-                    <div className="flex items-start justify-between gap-3">
+                  <article className="day-card" key={date}>
+                    <div className="day-header">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#201914] text-sm font-black text-white">{dayIndex + 1}</span>
-                          <div>
-                            <h3 className="text-xl font-black">{day.label}</h3>
-                            <p className="text-sm font-bold text-stone-500">{shortDate(day.date)}</p>
-                          </div>
-                        </div>
-                        <input value={day.vibe} onChange={(e) => setDays((prev) => prev.map((d) => d.id === day.id ? { ...d, vibe: e.target.value } : d))} className="mt-3 w-full bg-transparent text-sm font-bold text-stone-500 outline-none" />
+                        <p>{new Date(date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })}</p>
+                        <h4>{formatDateLabel(date)}</h4>
                       </div>
-                      <input value={day.date} onChange={(e) => setDays((prev) => prev.map((d) => d.id === day.id ? { ...d, date: e.target.value } : d))} type="date" className="rounded-2xl border border-stone-200 bg-white px-3 py-2 text-xs font-bold outline-none" />
+                      <span>{dayItems.length} plans</span>
                     </div>
-
-                    <div className="mt-4 space-y-3">
-                      {dayCards.length === 0 && <EmptyState text="No plans yet. Build the itinerary or move a voted card here." />}
-                      {dayCards.map((idea) => <Card key={idea.id} idea={idea} onOpen={() => setSelectedCard(idea)} onVote={vote} onMove={moveCard} days={days} />)}
-                    </div>
-                  </div>
+                    {dayItems.length === 0 ? (
+                      <button className="empty-day" onClick={() => setActiveCategory("all")}>No plans yet. Assign cards here.</button>
+                    ) : (
+                      <div className="timeline">
+                        {dayItems.map((idea) => <TimelineItem key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} />)}
+                      </div>
+                    )}
+                  </article>
                 );
               })}
             </div>
-          </div>
+          )}
         </section>
       </main>
 
-      {selectedCard && (
-        <div className="fixed inset-0 z-50 bg-stone-950/35 p-3 backdrop-blur-sm md:p-5" onClick={() => setSelectedCard(null)}>
-          <div className="ml-auto flex h-full max-w-xl flex-col overflow-hidden rounded-[2rem] bg-[#fbfaf7] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-stone-200 bg-white p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-rose-500">Quick edit</p>
-                  <h2 className="mt-1 text-3xl font-black">Plan details</h2>
-                </div>
-                <button onClick={() => setSelectedCard(null)} className="rounded-full bg-stone-100 px-4 py-2 text-lg font-black transition hover:bg-stone-200">×</button>
-              </div>
+      {showTripEditor && (
+        <div className="modal-backdrop" onClick={() => setShowTripEditor(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <button className="close" onClick={() => setShowTripEditor(false)}><X size={18} /></button>
+            <p className="eyebrow">Create / edit trip</p>
+            <h3>Trip details</h3>
+            <label>Trip name<input value={trip.name} onChange={(e) => setTrip({ ...trip, name: e.target.value })} /></label>
+            <label>Location<input value={trip.location} onChange={(e) => setTrip({ ...trip, location: e.target.value })} /></label>
+            <div className="two-col">
+              <label>Start date<input type="date" value={trip.startDate} onChange={(e) => setTrip({ ...trip, startDate: e.target.value })} /></label>
+              <label>End date<input type="date" value={trip.endDate} onChange={(e) => setTrip({ ...trip, endDate: e.target.value })} /></label>
             </div>
+            <button className="primary-button full" onClick={() => setShowTripEditor(false)}><CheckCircle2 size={17} /> Save trip</button>
+          </div>
+        </div>
+      )}
 
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
-              <Field label="Title">
-                <Input value={selectedCard.title} onChange={(e) => updateCard(selectedCard.id, { title: e.target.value })} />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Category">
-                  <select value={selectedCard.category} onChange={(e) => updateCard(selectedCard.id, { category: e.target.value, time: selectedCard.time || defaultTime(e.target.value) })} className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 font-bold outline-none focus:border-stone-500">
-                    {categories.map((category) => <option key={category.name}>{category.name}</option>)}
-                  </select>
-                </Field>
-                <Field label="Votes">
-                  <Input type="number" value={selectedCard.votes} onChange={(e) => updateCard(selectedCard.id, { votes: Number(e.target.value) })} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Day">
-                  <select value={selectedCard.dayId || ""} onChange={(e) => moveCard(selectedCard.id, e.target.value || null)} className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 font-bold outline-none focus:border-stone-500">
-                    <option value="">Idea board</option>
-                    {days.map((day) => <option key={day.id} value={day.id}>{day.label} — {day.date}</option>)}
-                  </select>
-                </Field>
-                <Field label="Time">
-                  <Input type="time" value={selectedCard.time} onChange={(e) => updateCard(selectedCard.id, { time: e.target.value })} />
-                </Field>
-              </div>
-
-              <Field label="Link">
-                <Input value={selectedCard.link} onChange={(e) => updateCard(selectedCard.id, { link: e.target.value })} placeholder="https://..." />
-              </Field>
-
-              <Field label="Notes">
-                <textarea value={selectedCard.notes} onChange={(e) => updateCard(selectedCard.id, { notes: e.target.value })} className="min-h-36 w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 font-medium outline-none focus:border-stone-500" />
-              </Field>
+      {editingIdea && (
+        <div className="modal-backdrop" onClick={() => setEditingIdea(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <button className="close" onClick={() => setEditingIdea(null)}><X size={18} /></button>
+            <p className="eyebrow">Quick edit</p>
+            <h3>{editingIdea.title}</h3>
+            <label>Title<input value={editingIdea.title} onChange={(e) => updateIdea(editingIdea.id, { title: e.target.value })} /></label>
+            <div className="two-col">
+              <label>Category<select value={editingIdea.category} onChange={(e) => updateIdea(editingIdea.id, { category: e.target.value })}>{CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}</select></label>
+              <label>Votes<input type="number" value={editingIdea.votes} onChange={(e) => updateIdea(editingIdea.id, { votes: Number(e.target.value) })} /></label>
             </div>
-
-            <div className="grid grid-cols-[1fr_auto] gap-3 border-t border-stone-200 bg-white p-5">
-              <button onClick={() => setSelectedCard(null)} className="rounded-2xl bg-[#201914] px-4 py-3 font-black text-white">Save changes</button>
-              <button onClick={() => deleteCard(selectedCard.id)} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-black text-red-600">Delete</button>
+            <div className="two-col">
+              <label>Date<select value={editingIdea.date} onChange={(e) => updateIdea(editingIdea.id, { date: e.target.value })}><option value="">Unscheduled</option>{tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}</select></label>
+              <label>Time<input type="time" value={editingIdea.time} onChange={(e) => updateIdea(editingIdea.id, { time: e.target.value })} /></label>
+            </div>
+            <label>Link<input value={editingIdea.link} onChange={(e) => updateIdea(editingIdea.id, { link: e.target.value })} /></label>
+            <label>Notes<textarea value={editingIdea.notes} onChange={(e) => updateIdea(editingIdea.id, { notes: e.target.value })} /></label>
+            <div className="modal-actions">
+              <button className="danger-button" onClick={() => deleteIdea(editingIdea.id)}><Trash2 size={16} /> Delete</button>
+              <button className="primary-button" onClick={() => setEditingIdea(null)}><CheckCircle2 size={17} /> Done</button>
             </div>
           </div>
         </div>
@@ -322,65 +318,125 @@ export default function App() {
   );
 }
 
-function Card({ idea, onOpen, onVote, onMove, days, compact = false }) {
-  const meta = categoryMeta(idea.category);
+function IdeaCard({ idea, onEdit, onVote }) {
+  const category = getCategory(idea.category);
   return (
-    <article className="group rounded-[1.5rem] border border-stone-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-stone-300/30">
-      <div className="flex items-start gap-3">
-        <button onClick={onOpen} className="min-w-0 flex-1 text-left">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${meta.accent}`}>{meta.emoji} {idea.category}</span>
-            {idea.dayId && <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-black text-stone-700">{idea.time}</span>}
-          </div>
-          <h3 className="mt-2 text-base font-black leading-snug text-stone-950">{idea.title}</h3>
-          {idea.notes && !compact && <p className="mt-1 line-clamp-2 text-sm font-medium leading-6 text-stone-500">{idea.notes}</p>}
-        </button>
-        <div className="grid w-12 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50 text-center">
-          <button onClick={() => onVote(idea.id, 1)} className="py-1 text-sm font-black hover:bg-white">+</button>
-          <span className="border-y border-stone-200 bg-white py-1 text-sm font-black">{idea.votes}</span>
-          <button onClick={() => onVote(idea.id, -1)} className="py-1 text-sm font-black hover:bg-white">−</button>
-        </div>
+    <article className="idea-card" style={{ "--accent": category.accent }} onClick={onEdit}>
+      <div className="idea-topline">
+        <span className="category-badge">{category.emoji} {category.label}</span>
+        <button className="vote-button" onClick={(e) => { e.stopPropagation(); onVote(); }}>♡ {idea.votes}</button>
       </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {idea.link && <a href={idea.link} target="_blank" rel="noreferrer" className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-black text-stone-600 hover:bg-stone-200">Open link</a>}
-        <select value={idea.dayId || ""} onChange={(e) => onMove(idea.id, e.target.value || null)} className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-black text-stone-600 outline-none">
-          <option value="">Idea board</option>
-          {days.map((day) => <option key={day.id} value={day.id}>{day.label}</option>)}
-        </select>
-        <button onClick={onOpen} className="ml-auto rounded-full px-3 py-1.5 text-xs font-black text-stone-400 transition group-hover:bg-stone-100 group-hover:text-stone-700">Edit</button>
+      <h4>{idea.title}</h4>
+      {idea.notes && <p>{idea.notes}</p>}
+      <div className="card-footer">
+        {idea.date ? <span><CalendarDays size={14} /> {formatDateLabel(idea.date)}</span> : <span><Clock size={14} /> Unscheduled</span>}
+        {idea.link && <span><LinkIcon size={14} /> Link saved</span>}
       </div>
     </article>
   );
 }
 
-function Kpi({ label, value, hint }) {
+function TimelineItem({ idea, onEdit }) {
+  const category = getCategory(idea.category);
   return (
-    <div className="rounded-[1.5rem] border border-stone-200 bg-white/90 p-4 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[0.18em] text-stone-400">{label}</p>
-      <p className="mt-1 truncate text-3xl font-black">{value}</p>
-      <p className="mt-1 truncate text-xs font-bold text-stone-500">{hint}</p>
-    </div>
+    <button className="timeline-item" style={{ "--accent": category.accent }} onClick={onEdit}>
+      <div className="time-chip">{idea.time || "Anytime"}</div>
+      <div>
+        <span>{category.emoji} {category.label}</span>
+        <strong>{idea.title}</strong>
+        {idea.notes && <p>{idea.notes}</p>}
+      </div>
+    </button>
   );
 }
 
-function Field({ label, children }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-black uppercase tracking-[0.18em] text-stone-400">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Input(props) {
-  return <input {...props} className={`w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 font-bold outline-none focus:border-stone-500 ${props.className || ""}`} />;
-}
-
-function EmptyState({ text }) {
-  return (
-    <div className="rounded-[1.25rem] border border-dashed border-stone-300 bg-white/70 p-5 text-center">
-      <p className="text-sm font-bold leading-6 text-stone-500">{text}</p>
-    </div>
-  );
-}
+const styles = `
+  :root {
+    color: #f8fafc;
+    background: #08111f;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-width: 320px; background: radial-gradient(circle at top left, #263b6f 0, transparent 32rem), radial-gradient(circle at top right, #5b254d 0, transparent 34rem), #07111f; }
+  button, input, textarea, select { font: inherit; }
+  .app-shell { min-height: 100vh; padding-bottom: 60px; }
+  .hero { position: relative; overflow: hidden; padding: 24px; border-bottom: 1px solid rgba(255,255,255,.1); }
+  .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,.08), transparent 35%, rgba(255,255,255,.04)); pointer-events: none; }
+  .hero-glow { position: absolute; width: 320px; height: 320px; border-radius: 999px; filter: blur(34px); opacity: .35; }
+  .hero-glow.one { background: #3b82f6; top: -140px; left: -80px; }
+  .hero-glow.two { background: #ec4899; right: -90px; bottom: -160px; }
+  .topbar, .hero-content, .main-grid { max-width: 1180px; margin: 0 auto; position: relative; z-index: 1; }
+  .topbar { display: flex; align-items: center; gap: 14px; }
+  .brand-mark { width: 48px; height: 48px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, #ffffff, #bcd2ff); color: #0b1425; font-weight: 900; font-size: 24px; box-shadow: 0 18px 60px rgba(88, 166, 255, .35); }
+  .topbar h1, .topbar p, .hero h2, .hero p { margin: 0; }
+  .topbar h1 { font-size: 22px; letter-spacing: -.04em; }
+  .eyebrow { color: #93a4bd; text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 800; }
+  .ghost-button { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: white; padding: 10px 14px; border-radius: 999px; cursor: pointer; }
+  .hero-content { display: grid; grid-template-columns: 1fr 360px; gap: 32px; align-items: end; padding: 70px 0 34px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.1); padding: 9px 13px; border-radius: 999px; color: #dbeafe; font-weight: 800; font-size: 13px; }
+  .hero h2 { margin-top: 18px; font-size: clamp(42px, 8vw, 78px); line-height: .92; letter-spacing: -.08em; max-width: 760px; }
+  .hero-subtitle { max-width: 720px; color: #cbd5e1; font-size: 17px; line-height: 1.65; margin-top: 20px !important; }
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .hero-meta span { display: inline-flex; align-items: center; gap: 7px; padding: 10px 12px; border-radius: 999px; background: rgba(15,23,42,.64); border: 1px solid rgba(255,255,255,.1); color: #e2e8f0; font-size: 13px; }
+  .hero-card, .panel, .modal { background: rgba(12, 21, 37, .74); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 80px rgba(0,0,0,.35); backdrop-filter: blur(22px); }
+  .hero-card { border-radius: 32px; padding: 24px; }
+  .hero-card p { color: #cbd5e1; font-weight: 800; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
+  .stat-grid div { background: rgba(255,255,255,.07); border-radius: 20px; padding: 14px; }
+  .stat-grid strong { display: block; font-size: 27px; letter-spacing: -.04em; }
+  .stat-grid span { color: #94a3b8; font-size: 12px; font-weight: 700; }
+  .main-grid { display: grid; grid-template-columns: minmax(0, .92fr) minmax(360px, 1.08fr); gap: 22px; padding: 24px; }
+  .panel { border-radius: 34px; padding: 22px; min-width: 0; }
+  .section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
+  .section-heading h3 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.04em; }
+  .mini-count { color: #cbd5e1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); padding: 8px 11px; border-radius: 999px; font-size: 12px; font-weight: 800; }
+  .add-form { display: grid; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+  input, textarea, select { width: 100%; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: #f8fafc; border-radius: 16px; padding: 12px 13px; outline: none; }
+  select option { background: #0f172a; color: white; }
+  textarea { min-height: 86px; resize: vertical; }
+  input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72); box-shadow: 0 0 0 4px rgba(59,130,246,.15); }
+  .primary-button, .danger-button { border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 17px; padding: 12px 15px; font-weight: 900; cursor: pointer; }
+  .primary-button { background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; box-shadow: 0 18px 40px rgba(59,130,246,.18); }
+  .primary-button:disabled { opacity: .5; cursor: not-allowed; }
+  .danger-button { background: rgba(239,68,68,.14); color: #fecaca; border: 1px solid rgba(239,68,68,.35); }
+  .full { width: 100%; }
+  .category-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+  .category-chip { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: #e2e8f0; border-radius: 999px; padding: 9px 11px; cursor: pointer; font-size: 13px; font-weight: 800; }
+  .category-chip span { color: #93c5fd; margin-left: 5px; }
+  .category-chip.active { background: white; color: #0f172a; }
+  .idea-list { display: grid; gap: 12px; max-height: 760px; overflow: auto; padding-right: 4px; }
+  .idea-card { border: 1px solid rgba(255,255,255,.12); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.045)); border-radius: 24px; padding: 16px; cursor: pointer; position: relative; overflow: hidden; }
+  .idea-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--accent); }
+  .idea-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.24); transition: .18s ease; }
+  .idea-topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .category-badge { color: #e2e8f0; background: rgba(255,255,255,.08); padding: 7px 9px; border-radius: 999px; font-weight: 900; font-size: 12px; }
+  .vote-button { border: 0; background: rgba(255,255,255,.1); color: white; border-radius: 999px; padding: 7px 10px; font-weight: 900; cursor: pointer; }
+  .idea-card h4 { margin: 14px 0 6px; font-size: 18px; letter-spacing: -.03em; }
+  .idea-card p { margin: 0; color: #cbd5e1; line-height: 1.45; font-size: 14px; }
+  .card-footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; color: #94a3b8; font-size: 12px; font-weight: 800; }
+  .card-footer span { display: inline-flex; align-items: center; gap: 5px; }
+  .days-stack { display: grid; gap: 14px; }
+  .day-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 27px; padding: 16px; }
+  .day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .day-header p, .day-header h4 { margin: 0; }
+  .day-header p { color: #93a4bd; font-weight: 900; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .day-header h4 { font-size: 21px; letter-spacing: -.04em; }
+  .day-header span { color: #cbd5e1; font-size: 12px; font-weight: 900; padding: 8px 10px; border-radius: 999px; background: rgba(255,255,255,.08); }
+  .empty-day, .empty-state { width: 100%; border: 1px dashed rgba(255,255,255,.18); background: rgba(255,255,255,.04); color: #94a3b8; border-radius: 20px; padding: 18px; text-align: center; }
+  .timeline { display: grid; gap: 10px; }
+  .timeline-item { width: 100%; text-align: left; border: 1px solid rgba(255,255,255,.1); background: rgba(2,6,23,.36); border-radius: 20px; padding: 12px; display: grid; grid-template-columns: 88px 1fr; gap: 12px; color: white; cursor: pointer; }
+  .timeline-item:hover { border-color: rgba(255,255,255,.24); }
+  .time-chip { color: #0f172a; background: linear-gradient(135deg, #ffffff, #dbeafe); border-radius: 15px; display: grid; place-items: center; min-height: 54px; font-weight: 950; }
+  .timeline-item span { color: var(--accent); font-weight: 950; font-size: 12px; }
+  .timeline-item strong { display: block; margin-top: 3px; font-size: 16px; letter-spacing: -.03em; }
+  .timeline-item p { color: #94a3b8; margin: 5px 0 0; font-size: 13px; line-height: 1.35; }
+  .modal-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(2,6,23,.74); display: grid; place-items: center; padding: 20px; }
+  .modal { width: min(560px, 100%); border-radius: 30px; padding: 24px; position: relative; max-height: 92vh; overflow: auto; }
+  .modal h3 { margin: 4px 38px 18px 0; font-size: 28px; letter-spacing: -.05em; }
+  .modal label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 13px; margin-bottom: 12px; }
+  .close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: white; cursor: pointer; display: grid; place-items: center; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+  @media (max-width: 920px) { .hero-content, .main-grid { grid-template-columns: 1fr; } .hero-content { padding-top: 42px; } }
+  @media (max-width: 640px) { .hero, .main-grid { padding: 16px; } .topbar { align-items: flex-start; } .ghost-button { padding: 9px 10px; font-size: 12px; } .hero h2 { font-size: 44px; } .hero-card, .panel { border-radius: 26px; } .two-col, .timeline-item { grid-template-columns: 1fr; } .time-chip { min-height: 42px; place-items: center start; padding-left: 12px; } }
+`;
