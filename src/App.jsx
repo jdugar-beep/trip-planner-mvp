@@ -1,63 +1,66 @@
-import React, { useMemo, useState } from "react";
-import { CalendarDays, Plus, Sparkles, Clock, Link as LinkIcon, MapPin, Users, Wand2, X, Edit3, Trash2, CheckCircle2 } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  CalendarDays,
+  Plus,
+  Sparkles,
+  Clock,
+  Link as LinkIcon,
+  MapPin,
+  Wand2,
+  X,
+  Edit3,
+  Trash2,
+  CheckCircle2,
+  LayoutGrid,
+  ListTodo,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Plane,
+} from "lucide-react";
 
 const CATEGORIES = [
-  { key: "breakfast", label: "Breakfast", emoji: "🥐", accent: "#F59E0B" },
-  { key: "lunch", label: "Lunch", emoji: "🥗", accent: "#10B981" },
-  { key: "dinner", label: "Dinner", emoji: "🍝", accent: "#EF4444" },
-  { key: "activity", label: "Activity", emoji: "🎟️", accent: "#8B5CF6" },
-  { key: "drinks", label: "Drinks", emoji: "🍸", accent: "#EC4899" },
-  { key: "sightseeing", label: "Sightseeing", emoji: "🏛️", accent: "#3B82F6" },
-  { key: "exploring", label: "Exploring", emoji: "🚶", accent: "#14B8A6" },
+  { key: "breakfast", label: "Breakfast", emoji: "🥐", accent: "#F59E0B", defaultTime: "09:30" },
+  { key: "lunch", label: "Lunch", emoji: "🥗", accent: "#10B981", defaultTime: "13:00" },
+  { key: "dinner", label: "Dinner", emoji: "🍝", accent: "#EF4444", defaultTime: "20:00" },
+  { key: "activity", label: "Activity", emoji: "🎟️", accent: "#8B5CF6", defaultTime: "15:00" },
+  { key: "drinks", label: "Drinks", emoji: "🍸", accent: "#EC4899", defaultTime: "21:30" },
+  { key: "sightseeing", label: "Sightseeing", emoji: "🏛️", accent: "#3B82F6", defaultTime: "11:00" },
+  { key: "exploring", label: "Exploring", emoji: "🚶", accent: "#14B8A6", defaultTime: "17:00" },
 ];
 
-const sampleIdeas = [
-  {
-    id: crypto.randomUUID(),
-    title: "Neighborhood cafe with pastries",
-    category: "breakfast",
-    link: "https://maps.google.com",
-    notes: "Good first morning option. Add the real link later.",
-    votes: 5,
-    date: "",
-    time: "09:30",
-  },
-  {
-    id: crypto.randomUUID(),
-    title: "Long lunch somewhere cute",
-    category: "lunch",
-    link: "",
-    notes: "Save a few top lunch spots here and vote with friends.",
-    votes: 3,
-    date: "",
-    time: "13:00",
-  },
-  {
-    id: crypto.randomUUID(),
-    title: "Fancy dinner reservation",
-    category: "dinner",
-    link: "",
-    notes: "Mark once booked.",
-    votes: 7,
-    date: "",
-    time: "20:00",
-  },
-  {
-    id: crypto.randomUUID(),
-    title: "Museum / gallery stop",
-    category: "sightseeing",
-    link: "",
-    notes: "Could pair with nearby lunch.",
-    votes: 4,
-    date: "",
-    time: "11:30",
-  },
-];
+const STORAGE_KEY = "its-a-trip-multitrip-v1";
 
-function formatDateLabel(dateString) {
+function uid() {
+  return crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(dateString, days) {
+  const date = new Date((dateString || todayISO()) + "T12:00:00");
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function monthStart(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function weekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+function formatDateLabel(dateString, opts = {}) {
   if (!dateString) return "Unscheduled";
   const date = new Date(dateString + "T12:00:00");
-  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return date.toLocaleDateString(undefined, opts.short ? { month: "short", day: "numeric" } : { weekday: "short", month: "short", day: "numeric" });
 }
 
 function getDateRange(start, end) {
@@ -77,224 +80,238 @@ function getCategory(categoryKey) {
   return CATEGORIES.find((cat) => cat.key === categoryKey) || CATEGORIES[0];
 }
 
-export default function App() {
-  const [trip, setTrip] = useState({
-    name: "Mexico City Birthday Trip",
-    location: "Mexico City",
-    startDate: "2026-06-18",
-    endDate: "2026-06-22",
-  });
+function makeBlankTrip() {
+  const start = todayISO();
+  return {
+    id: uid(),
+    name: "New Trip",
+    location: "",
+    startDate: start,
+    endDate: addDays(start, 3),
+    ideas: [],
+    createdAt: new Date().toISOString(),
+  };
+}
 
-  const [ideas, setIdeas] = useState(sampleIdeas);
+export default function App() {
+  const [trips, setTrips] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [activeTripId, setActiveTripId] = useState(() => trips[0]?.id || "");
+  const [page, setPage] = useState("board");
   const [activeCategory, setActiveCategory] = useState("all");
   const [editingIdea, setEditingIdea] = useState(null);
   const [showTripEditor, setShowTripEditor] = useState(false);
+  const [calendarMode, setCalendarMode] = useState("month");
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date(todayISO() + "T12:00:00"));
   const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "" });
 
-  const tripDates = useMemo(() => getDateRange(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
+    if (trips.length && !trips.some((trip) => trip.id === activeTripId)) setActiveTripId(trips[0].id);
+  }, [trips, activeTripId]);
+
+  const activeTrip = trips.find((trip) => trip.id === activeTripId) || null;
+  const tripDates = useMemo(() => getDateRange(activeTrip?.startDate, activeTrip?.endDate), [activeTrip]);
+  const ideas = activeTrip?.ideas || [];
   const scheduledIdeas = ideas.filter((idea) => idea.date).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
   const unscheduledIdeas = ideas.filter((idea) => !idea.date);
   const filteredIdeas = ideas.filter((idea) => activeCategory === "all" || idea.category === activeCategory);
+
+  const allScheduledItems = useMemo(() => {
+    return trips.flatMap((trip) =>
+      (trip.ideas || [])
+        .filter((idea) => idea.date)
+        .map((idea) => ({ ...idea, tripId: trip.id, tripName: trip.name, tripLocation: trip.location }))
+    );
+  }, [trips]);
 
   const categoryCounts = CATEGORIES.reduce((acc, cat) => {
     acc[cat.key] = ideas.filter((idea) => idea.category === cat.key).length;
     return acc;
   }, {});
 
+  function addTrip() {
+    const trip = makeBlankTrip();
+    setTrips((current) => [trip, ...current]);
+    setActiveTripId(trip.id);
+    setPage("board");
+    setShowTripEditor(true);
+  }
+
+  function updateTrip(updates) {
+    if (!activeTrip) return;
+    setTrips((current) => current.map((trip) => (trip.id === activeTrip.id ? { ...trip, ...updates } : trip)));
+  }
+
+  function deleteTrip() {
+    if (!activeTrip) return;
+    setTrips((current) => current.filter((trip) => trip.id !== activeTrip.id));
+    setShowTripEditor(false);
+    setEditingIdea(null);
+  }
+
   function addIdea(event) {
     event.preventDefault();
-    if (!newIdea.title.trim()) return;
-    setIdeas((current) => [
-      {
-        id: crypto.randomUUID(),
-        title: newIdea.title.trim(),
-        category: newIdea.category,
-        link: newIdea.link.trim(),
-        notes: newIdea.notes.trim(),
-        votes: 0,
-        date: "",
-        time: "",
-      },
-      ...current,
-    ]);
+    if (!activeTrip || !newIdea.title.trim()) return;
+    const idea = {
+      id: uid(),
+      title: newIdea.title.trim(),
+      category: newIdea.category,
+      link: newIdea.link.trim(),
+      notes: newIdea.notes.trim(),
+      votes: 0,
+      date: "",
+      time: "",
+    };
+    updateTrip({ ideas: [idea, ...ideas] });
     setNewIdea({ title: "", category: newIdea.category, link: "", notes: "" });
   }
 
   function updateIdea(id, updates) {
-    setIdeas((current) => current.map((idea) => (idea.id === id ? { ...idea, ...updates } : idea)));
+    const updatedIdeas = ideas.map((idea) => (idea.id === id ? { ...idea, ...updates } : idea));
+    updateTrip({ ideas: updatedIdeas });
     setEditingIdea((current) => (current?.id === id ? { ...current, ...updates } : current));
   }
 
   function deleteIdea(id) {
-    setIdeas((current) => current.filter((idea) => idea.id !== id));
+    updateTrip({ ideas: ideas.filter((idea) => idea.id !== id) });
     setEditingIdea(null);
   }
 
   function autoBuildItinerary() {
-    if (!tripDates.length) return;
-
-    const defaultTimes = {
-      breakfast: "09:30",
-      lunch: "13:00",
-      dinner: "20:00",
-      activity: "15:00",
-      drinks: "22:00",
-      sightseeing: "11:00",
-      exploring: "17:00",
-    };
-
-    const pickedByCategory = CATEGORIES.flatMap((cat) => {
-      const options = ideas
+    if (!activeTrip || !tripDates.length) return;
+    const assignments = new Map();
+    CATEGORIES.forEach((cat) => {
+      ideas
         .filter((idea) => idea.category === cat.key)
         .sort((a, b) => b.votes - a.votes)
-        .slice(0, tripDates.length);
-      return options.map((idea, index) => ({ idea, date: tripDates[index % tripDates.length], time: idea.time || defaultTimes[cat.key] }));
+        .slice(0, tripDates.length)
+        .forEach((idea, index) => assignments.set(idea.id, { date: tripDates[index % tripDates.length], time: idea.time || cat.defaultTime }));
     });
-
-    const assignments = new Map(pickedByCategory.map((item) => [item.idea.id, { date: item.date, time: item.time }]));
-    setIdeas((current) => current.map((idea) => (assignments.has(idea.id) ? { ...idea, ...assignments.get(idea.id) } : idea)));
+    updateTrip({ ideas: ideas.map((idea) => (assignments.has(idea.id) ? { ...idea, ...assignments.get(idea.id) } : idea)) });
+    setPage("itinerary");
   }
 
   return (
     <div className="app-shell">
       <style>{styles}</style>
-
       <header className="hero">
-        <div className="hero-glow one" />
-        <div className="hero-glow two" />
+        <div className="orb orb-one" />
+        <div className="orb orb-two" />
         <nav className="topbar">
-          <div className="brand-mark">✦</div>
+          <div className="brand-mark"><Plane size={24} /></div>
           <div>
-            <p className="eyebrow">Group trip planner</p>
+            <p className="eyebrow">Collaborative trip planner</p>
             <h1>It’s a Trip</h1>
           </div>
-          <button className="ghost-button" onClick={() => setShowTripEditor(true)}>
-            <Edit3 size={16} /> Edit trip
-          </button>
+          <div className="top-actions">
+            <button className="ghost-button" onClick={addTrip}><Plus size={16} /> Add trip</button>
+            {activeTrip && <button className="ghost-button" onClick={() => setShowTripEditor(true)}><Edit3 size={16} /> Edit trip</button>}
+          </div>
         </nav>
 
         <section className="hero-content">
           <div>
-            <p className="pill"><Sparkles size={14} /> Collaborative itinerary board</p>
-            <h2>{trip.name}</h2>
+            <p className="pill"><Sparkles size={14} /> Ideas become itineraries</p>
+            <h2>{activeTrip ? activeTrip.name : "Plan a trip from scratch."}</h2>
             <p className="hero-subtitle">
-              Add ideas by category, let everyone vote, then assign each spot to a date and time so your trip turns into a clean itinerary.
+              Create multiple trips, add links and ideas by category, vote on options, then schedule each card into a clean day-by-day itinerary.
             </p>
             <div className="hero-meta">
-              <span><MapPin size={16} /> {trip.location || "Add location"}</span>
-              <span><CalendarDays size={16} /> {formatDateLabel(trip.startDate)} – {formatDateLabel(trip.endDate)}</span>
-              <span><Users size={16} /> Shareable with friends</span>
+              <span><MapPin size={16} /> {activeTrip?.location || "No location yet"}</span>
+              <span><CalendarDays size={16} /> {activeTrip ? `${formatDateLabel(activeTrip.startDate)} – ${formatDateLabel(activeTrip.endDate)}` : "Add dates"}</span>
+              <span><LayoutGrid size={16} /> {trips.length} trip{trips.length === 1 ? "" : "s"}</span>
             </div>
           </div>
-
           <div className="hero-card">
-            <p>Trip status</p>
+            <p>Current trip</p>
+            {trips.length ? (
+              <select className="trip-select" value={activeTripId} onChange={(e) => setActiveTripId(e.target.value)}>
+                {trips.map((trip) => <option key={trip.id} value={trip.id}>{trip.name}</option>)}
+              </select>
+            ) : (
+              <button className="primary-button full" onClick={addTrip}><Plus size={17} /> Create your first trip</button>
+            )}
             <div className="stat-grid">
-              <div><strong>{ideas.length}</strong><span>Total ideas</span></div>
+              <div><strong>{ideas.length}</strong><span>Ideas</span></div>
               <div><strong>{scheduledIdeas.length}</strong><span>Scheduled</span></div>
-              <div><strong>{tripDates.length}</strong><span>Trip days</span></div>
+              <div><strong>{tripDates.length}</strong><span>Days</span></div>
             </div>
-            <button className="primary-button full" onClick={autoBuildItinerary} disabled={!tripDates.length}>
-              <Wand2 size={17} /> Auto-build draft itinerary
+            <button className="primary-button full" onClick={autoBuildItinerary} disabled={!activeTrip || !tripDates.length || !ideas.length}>
+              <Wand2 size={17} /> Auto-build draft
             </button>
           </div>
         </section>
       </header>
 
-      <main className="main-grid">
-        <section className="panel add-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Add ideas</p>
-              <h3>Planning board</h3>
-            </div>
-          </div>
+      <main className="workspace">
+        <div className="page-tabs">
+          <button className={page === "board" ? "tab active" : "tab"} onClick={() => setPage("board")}><ListTodo size={16} /> Planning board</button>
+          <button className={page === "itinerary" ? "tab active" : "tab"} onClick={() => setPage("itinerary")}><CalendarDays size={16} /> Your itinerary</button>
+          <button className={page === "calendar" ? "tab active" : "tab"} onClick={() => setPage("calendar")}><CalendarRange size={16} /> All trips calendar</button>
+        </div>
 
-          <form className="add-form" onSubmit={addIdea}>
-            <input value={newIdea.title} onChange={(e) => setNewIdea({ ...newIdea, title: e.target.value })} placeholder="Spot name, restaurant, activity..." />
-            <select value={newIdea.category} onChange={(e) => setNewIdea({ ...newIdea, category: e.target.value })}>
-              {CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}
-            </select>
-            <input value={newIdea.link} onChange={(e) => setNewIdea({ ...newIdea, link: e.target.value })} placeholder="Optional link" />
-            <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Notes, reservation details, why people should vote for it..." />
-            <button className="primary-button" type="submit"><Plus size={17} /> Add to trip</button>
-          </form>
-
-          <div className="category-cloud">
-            <button className={activeCategory === "all" ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory("all")}>All <span>{ideas.length}</span></button>
-            {CATEGORIES.map((cat) => (
-              <button key={cat.key} className={activeCategory === cat.key ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory(cat.key)}>
-                {cat.emoji} {cat.label} <span>{categoryCounts[cat.key]}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="idea-list">
-            {filteredIdeas.map((idea) => <IdeaCard key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} onVote={() => updateIdea(idea.id, { votes: idea.votes + 1 })} />)}
-          </div>
-        </section>
-
-        <section className="panel itinerary-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Scheduled plan</p>
-              <h3>Your itinerary</h3>
-            </div>
-            <span className="mini-count">{unscheduledIdeas.length} unscheduled</span>
-          </div>
-
-          {!tripDates.length ? (
-            <div className="empty-state">Add trip start and end dates to build an itinerary.</div>
-          ) : (
-            <div className="days-stack">
-              {tripDates.map((date) => {
-                const dayItems = scheduledIdeas.filter((idea) => idea.date === date);
-                return (
-                  <article className="day-card" key={date}>
-                    <div className="day-header">
-                      <div>
-                        <p>{new Date(date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })}</p>
-                        <h4>{formatDateLabel(date)}</h4>
-                      </div>
-                      <span>{dayItems.length} plans</span>
-                    </div>
-                    {dayItems.length === 0 ? (
-                      <button className="empty-day" onClick={() => setActiveCategory("all")}>No plans yet. Assign cards here.</button>
-                    ) : (
-                      <div className="timeline">
-                        {dayItems.map((idea) => <TimelineItem key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} />)}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
+        {!activeTrip && page !== "calendar" ? (
+          <EmptyCreateTrip onAddTrip={addTrip} />
+        ) : page === "board" ? (
+          <PlanningBoard
+            ideas={filteredIdeas}
+            totalIdeas={ideas.length}
+            activeCategory={activeCategory}
+            setActiveCategory={setActiveCategory}
+            categoryCounts={categoryCounts}
+            newIdea={newIdea}
+            setNewIdea={setNewIdea}
+            addIdea={addIdea}
+            setEditingIdea={setEditingIdea}
+            updateIdea={updateIdea}
+          />
+        ) : page === "itinerary" ? (
+          <ItineraryPage tripDates={tripDates} scheduledIdeas={scheduledIdeas} unscheduledIdeas={unscheduledIdeas} setEditingIdea={setEditingIdea} />
+        ) : (
+          <CalendarPage
+            trips={trips}
+            allScheduledItems={allScheduledItems}
+            calendarMode={calendarMode}
+            setCalendarMode={setCalendarMode}
+            calendarCursor={calendarCursor}
+            setCalendarCursor={setCalendarCursor}
+            setActiveTripId={setActiveTripId}
+            setPage={setPage}
+          />
+        )}
       </main>
 
-      {showTripEditor && (
+      {showTripEditor && activeTrip && (
         <div className="modal-backdrop" onClick={() => setShowTripEditor(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={() => setShowTripEditor(false)}><X size={18} /></button>
-            <p className="eyebrow">Create / edit trip</p>
-            <h3>Trip details</h3>
-            <label>Trip name<input value={trip.name} onChange={(e) => setTrip({ ...trip, name: e.target.value })} /></label>
-            <label>Location<input value={trip.location} onChange={(e) => setTrip({ ...trip, location: e.target.value })} /></label>
+            <p className="eyebrow">Trip setup</p>
+            <h3>{activeTrip.name === "New Trip" ? "Create trip" : "Edit trip"}</h3>
+            <label>Trip name<input value={activeTrip.name} onChange={(e) => updateTrip({ name: e.target.value })} /></label>
+            <label>Location<input value={activeTrip.location} onChange={(e) => updateTrip({ location: e.target.value })} placeholder="City, country, region..." /></label>
             <div className="two-col">
-              <label>Start date<input type="date" value={trip.startDate} onChange={(e) => setTrip({ ...trip, startDate: e.target.value })} /></label>
-              <label>End date<input type="date" value={trip.endDate} onChange={(e) => setTrip({ ...trip, endDate: e.target.value })} /></label>
+              <label>Start date<input type="date" value={activeTrip.startDate} onChange={(e) => updateTrip({ startDate: e.target.value })} /></label>
+              <label>End date<input type="date" value={activeTrip.endDate} onChange={(e) => updateTrip({ endDate: e.target.value })} /></label>
             </div>
-            <button className="primary-button full" onClick={() => setShowTripEditor(false)}><CheckCircle2 size={17} /> Save trip</button>
+            <div className="modal-actions">
+              <button className="danger-button" onClick={deleteTrip}><Trash2 size={16} /> Delete trip</button>
+              <button className="primary-button" onClick={() => setShowTripEditor(false)}><CheckCircle2 size={17} /> Save trip</button>
+            </div>
           </div>
         </div>
       )}
 
-      {editingIdea && (
+      {editingIdea && activeTrip && (
         <div className="modal-backdrop" onClick={() => setEditingIdea(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={() => setEditingIdea(null)}><X size={18} /></button>
-            <p className="eyebrow">Quick edit</p>
+            <p className="eyebrow">Click-to-schedule</p>
             <h3>{editingIdea.title}</h3>
             <label>Title<input value={editingIdea.title} onChange={(e) => updateIdea(editingIdea.id, { title: e.target.value })} /></label>
             <div className="two-col">
@@ -302,10 +319,10 @@ export default function App() {
               <label>Votes<input type="number" value={editingIdea.votes} onChange={(e) => updateIdea(editingIdea.id, { votes: Number(e.target.value) })} /></label>
             </div>
             <div className="two-col">
-              <label>Date<select value={editingIdea.date} onChange={(e) => updateIdea(editingIdea.id, { date: e.target.value })}><option value="">Unscheduled</option>{tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}</select></label>
+              <label>Date<select value={editingIdea.date} onChange={(e) => updateIdea(editingIdea.id, { date: e.target.value })}><option value="">Not scheduled yet</option>{tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}</select></label>
               <label>Time<input type="time" value={editingIdea.time} onChange={(e) => updateIdea(editingIdea.id, { time: e.target.value })} /></label>
             </div>
-            <label>Link<input value={editingIdea.link} onChange={(e) => updateIdea(editingIdea.id, { link: e.target.value })} /></label>
+            <label>Link<input value={editingIdea.link} onChange={(e) => updateIdea(editingIdea.id, { link: e.target.value })} placeholder="Paste Google Maps, TikTok, restaurant link..." /></label>
             <label>Notes<textarea value={editingIdea.notes} onChange={(e) => updateIdea(editingIdea.id, { notes: e.target.value })} /></label>
             <div className="modal-actions">
               <button className="danger-button" onClick={() => deleteIdea(editingIdea.id)}><Trash2 size={16} /> Delete</button>
@@ -315,6 +332,180 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function EmptyCreateTrip({ onAddTrip }) {
+  return (
+    <section className="empty-start">
+      <div className="empty-icon"><Plane size={34} /></div>
+      <p className="eyebrow">Blank slate</p>
+      <h3>Create a brand new trip</h3>
+      <p>No dummy data. Start with dates, then add breakfast, lunch, dinner, activities, drinks, sightseeing, and exploring ideas.</p>
+      <button className="primary-button" onClick={onAddTrip}><Plus size={17} /> Add trip</button>
+    </section>
+  );
+}
+
+function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, categoryCounts, newIdea, setNewIdea, addIdea, setEditingIdea, updateIdea }) {
+  return (
+    <section className="panel board-page">
+      <div className="section-heading">
+        <div><p className="eyebrow">Add and vote</p><h3>Planning board</h3></div>
+        <span className="mini-count">{totalIdeas} total ideas</span>
+      </div>
+      <form className="add-form" onSubmit={addIdea}>
+        <input value={newIdea.title} onChange={(e) => setNewIdea({ ...newIdea, title: e.target.value })} placeholder="Spot name, restaurant, activity..." />
+        <select value={newIdea.category} onChange={(e) => setNewIdea({ ...newIdea, category: e.target.value })}>
+          {CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}
+        </select>
+        <input value={newIdea.link} onChange={(e) => setNewIdea({ ...newIdea, link: e.target.value })} placeholder="Optional link" />
+        <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Notes, reservation details, why people should vote for it..." />
+        <button className="primary-button" type="submit"><Plus size={17} /> Add to trip</button>
+      </form>
+
+      <div className="category-cloud">
+        <button className={activeCategory === "all" ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory("all")}>All <span>{totalIdeas}</span></button>
+        {CATEGORIES.map((cat) => (
+          <button key={cat.key} className={activeCategory === cat.key ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory(cat.key)}>
+            {cat.emoji} {cat.label} <span>{categoryCounts[cat.key] || 0}</span>
+          </button>
+        ))}
+      </div>
+
+      {ideas.length ? <div className="idea-grid">{ideas.map((idea) => <IdeaCard key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} onVote={() => updateIdea(idea.id, { votes: idea.votes + 1 })} />)}</div> : <div className="empty-state">No ideas here yet. Add your first spot above.</div>}
+    </section>
+  );
+}
+
+function ItineraryPage({ tripDates, scheduledIdeas, unscheduledIdeas, setEditingIdea }) {
+  return (
+    <section className="panel itinerary-page">
+      <div className="section-heading">
+        <div><p className="eyebrow">Scheduled plan</p><h3>Your itinerary</h3></div>
+        <span className="mini-count">{unscheduledIdeas.length} unscheduled</span>
+      </div>
+      {!tripDates.length ? <div className="empty-state">Add trip start and end dates to build an itinerary.</div> : (
+        <div className="days-stack">
+          {tripDates.map((date) => {
+            const dayItems = scheduledIdeas.filter((idea) => idea.date === date);
+            return (
+              <article className="day-card" key={date}>
+                <div className="day-header">
+                  <div><p>{new Date(date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })}</p><h4>{formatDateLabel(date)}</h4></div>
+                  <span>{dayItems.length} plans</span>
+                </div>
+                {dayItems.length === 0 ? <button className="empty-day">No plans yet. Click a card on the planning board to assign it here.</button> : <div className="timeline">{dayItems.map((idea) => <TimelineItem key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} />)}</div>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CalendarPage({ trips, allScheduledItems, calendarMode, setCalendarMode, calendarCursor, setCalendarCursor, setActiveTripId, setPage }) {
+  function moveCalendar(direction) {
+    const d = new Date(calendarCursor);
+    if (calendarMode === "month") d.setMonth(d.getMonth() + direction);
+    if (calendarMode === "week") d.setDate(d.getDate() + direction * 7);
+    if (calendarMode === "year") d.setFullYear(d.getFullYear() + direction);
+    setCalendarCursor(d);
+  }
+
+  return (
+    <section className="panel calendar-page">
+      <div className="section-heading calendar-heading">
+        <div><p className="eyebrow">Across every trip</p><h3>Calendar</h3></div>
+        <div className="calendar-controls">
+          <button className="icon-button" onClick={() => moveCalendar(-1)}><ChevronLeft size={18} /></button>
+          <strong>{calendarTitle(calendarCursor, calendarMode)}</strong>
+          <button className="icon-button" onClick={() => moveCalendar(1)}><ChevronRight size={18} /></button>
+          <div className="mode-toggle">
+            {['week', 'month', 'year'].map((mode) => <button key={mode} className={calendarMode === mode ? "active" : ""} onClick={() => setCalendarMode(mode)}>{mode}</button>)}
+          </div>
+        </div>
+      </div>
+      {!trips.length ? <div className="empty-state">Create trips and schedule cards to see everything here.</div> : calendarMode === "year" ? <YearCalendar cursor={calendarCursor} items={allScheduledItems} setActiveTripId={setActiveTripId} setPage={setPage} /> : <GridCalendar mode={calendarMode} cursor={calendarCursor} items={allScheduledItems} setActiveTripId={setActiveTripId} setPage={setPage} />}
+    </section>
+  );
+}
+
+function calendarTitle(cursor, mode) {
+  if (mode === "year") return String(cursor.getFullYear());
+  if (mode === "week") {
+    const start = weekStart(cursor);
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${end.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  }
+  return cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function GridCalendar({ mode, cursor, items, setActiveTripId, setPage }) {
+  const days = [];
+  if (mode === "week") {
+    const start = weekStart(cursor);
+    for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); days.push(d); }
+  } else {
+    const start = monthStart(cursor);
+    const gridStart = weekStart(start);
+    for (let i = 0; i < 42; i++) { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); days.push(d); }
+  }
+  return (
+    <div className={mode === "week" ? "calendar-grid week" : "calendar-grid"}>
+      {days.map((day) => {
+        const iso = day.toISOString().slice(0, 10);
+        const dayItems = items.filter((item) => item.date === iso).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+        const muted = mode === "month" && day.getMonth() !== cursor.getMonth();
+        return <CalendarCell key={iso} iso={iso} date={day} muted={muted} items={dayItems} setActiveTripId={setActiveTripId} setPage={setPage} />;
+      })}
+    </div>
+  );
+}
+
+function YearCalendar({ cursor, items, setActiveTripId, setPage }) {
+  const months = Array.from({ length: 12 }, (_, month) => new Date(cursor.getFullYear(), month, 1));
+  return (
+    <div className="year-grid">
+      {months.map((monthDate) => {
+        const monthItems = items.filter((item) => {
+          const d = new Date(item.date + "T12:00:00");
+          return d.getFullYear() === monthDate.getFullYear() && d.getMonth() === monthDate.getMonth();
+        });
+        return (
+          <article className="month-card" key={monthDate.toISOString()}>
+            <h4>{monthDate.toLocaleDateString(undefined, { month: "long" })}</h4>
+            <p>{monthItems.length} scheduled plan{monthItems.length === 1 ? "" : "s"}</p>
+            <div className="month-items">
+              {monthItems.slice(0, 4).map((item) => <MiniCalendarItem key={item.id} item={item} setActiveTripId={setActiveTripId} setPage={setPage} />)}
+              {monthItems.length > 4 && <span className="more-pill">+{monthItems.length - 4} more</span>}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function CalendarCell({ iso, date, muted, items, setActiveTripId, setPage }) {
+  return (
+    <article className={muted ? "calendar-cell muted" : "calendar-cell"}>
+      <div className="cell-date"><span>{date.toLocaleDateString(undefined, { weekday: "short" })}</span><strong>{date.getDate()}</strong></div>
+      <div className="cell-items">
+        {items.slice(0, 4).map((item) => <MiniCalendarItem key={item.id + iso} item={item} setActiveTripId={setActiveTripId} setPage={setPage} />)}
+        {items.length > 4 && <span className="more-pill">+{items.length - 4} more</span>}
+      </div>
+    </article>
+  );
+}
+
+function MiniCalendarItem({ item, setActiveTripId, setPage }) {
+  const category = getCategory(item.category);
+  return (
+    <button className="mini-calendar-item" style={{ "--accent": category.accent }} onClick={() => { setActiveTripId(item.tripId); setPage("itinerary"); }}>
+      <span>{item.time || "Any"}</span> {category.emoji} {item.title}<em>{item.tripName}</em>
+    </button>
   );
 }
 
@@ -329,7 +520,7 @@ function IdeaCard({ idea, onEdit, onVote }) {
       <h4>{idea.title}</h4>
       {idea.notes && <p>{idea.notes}</p>}
       <div className="card-footer">
-        {idea.date ? <span><CalendarDays size={14} /> {formatDateLabel(idea.date)}</span> : <span><Clock size={14} /> Unscheduled</span>}
+        {idea.date ? <span><CalendarDays size={14} /> {formatDateLabel(idea.date, { short: true })} {idea.time && `• ${idea.time}`}</span> : <span><Clock size={14} /> Click to schedule</span>}
         {idea.link && <span><LinkIcon size={14} /> Link saved</span>}
       </div>
     </article>
@@ -345,98 +536,126 @@ function TimelineItem({ idea, onEdit }) {
         <span>{category.emoji} {category.label}</span>
         <strong>{idea.title}</strong>
         {idea.notes && <p>{idea.notes}</p>}
+        {idea.link && <em><LinkIcon size={13} /> Link attached</em>}
       </div>
     </button>
   );
 }
 
 const styles = `
-  :root {
-    color: #f8fafc;
-    background: #08111f;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; min-width: 320px; background: radial-gradient(circle at top left, #263b6f 0, transparent 32rem), radial-gradient(circle at top right, #5b254d 0, transparent 34rem), #07111f; }
-  button, input, textarea, select { font: inherit; }
-  .app-shell { min-height: 100vh; padding-bottom: 60px; }
-  .hero { position: relative; overflow: hidden; padding: 24px; border-bottom: 1px solid rgba(255,255,255,.1); }
-  .hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,.08), transparent 35%, rgba(255,255,255,.04)); pointer-events: none; }
-  .hero-glow { position: absolute; width: 320px; height: 320px; border-radius: 999px; filter: blur(34px); opacity: .35; }
-  .hero-glow.one { background: #3b82f6; top: -140px; left: -80px; }
-  .hero-glow.two { background: #ec4899; right: -90px; bottom: -160px; }
-  .topbar, .hero-content, .main-grid { max-width: 1180px; margin: 0 auto; position: relative; z-index: 1; }
-  .topbar { display: flex; align-items: center; gap: 14px; }
-  .brand-mark { width: 48px; height: 48px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, #ffffff, #bcd2ff); color: #0b1425; font-weight: 900; font-size: 24px; box-shadow: 0 18px 60px rgba(88, 166, 255, .35); }
-  .topbar h1, .topbar p, .hero h2, .hero p { margin: 0; }
-  .topbar h1 { font-size: 22px; letter-spacing: -.04em; }
-  .eyebrow { color: #93a4bd; text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 800; }
-  .ghost-button { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: white; padding: 10px 14px; border-radius: 999px; cursor: pointer; }
-  .hero-content { display: grid; grid-template-columns: 1fr 360px; gap: 32px; align-items: end; padding: 70px 0 34px; }
-  .pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.1); padding: 9px 13px; border-radius: 999px; color: #dbeafe; font-weight: 800; font-size: 13px; }
-  .hero h2 { margin-top: 18px; font-size: clamp(42px, 8vw, 78px); line-height: .92; letter-spacing: -.08em; max-width: 760px; }
-  .hero-subtitle { max-width: 720px; color: #cbd5e1; font-size: 17px; line-height: 1.65; margin-top: 20px !important; }
-  .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-  .hero-meta span { display: inline-flex; align-items: center; gap: 7px; padding: 10px 12px; border-radius: 999px; background: rgba(15,23,42,.64); border: 1px solid rgba(255,255,255,.1); color: #e2e8f0; font-size: 13px; }
-  .hero-card, .panel, .modal { background: rgba(12, 21, 37, .74); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 80px rgba(0,0,0,.35); backdrop-filter: blur(22px); }
-  .hero-card { border-radius: 32px; padding: 24px; }
-  .hero-card p { color: #cbd5e1; font-weight: 800; }
-  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
-  .stat-grid div { background: rgba(255,255,255,.07); border-radius: 20px; padding: 14px; }
-  .stat-grid strong { display: block; font-size: 27px; letter-spacing: -.04em; }
-  .stat-grid span { color: #94a3b8; font-size: 12px; font-weight: 700; }
-  .main-grid { display: grid; grid-template-columns: minmax(0, .92fr) minmax(360px, 1.08fr); gap: 22px; padding: 24px; }
-  .panel { border-radius: 34px; padding: 22px; min-width: 0; }
-  .section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
-  .section-heading h3 { margin: 4px 0 0; font-size: 25px; letter-spacing: -.04em; }
-  .mini-count { color: #cbd5e1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); padding: 8px 11px; border-radius: 999px; font-size: 12px; font-weight: 800; }
-  .add-form { display: grid; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
-  input, textarea, select { width: 100%; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: #f8fafc; border-radius: 16px; padding: 12px 13px; outline: none; }
-  select option { background: #0f172a; color: white; }
-  textarea { min-height: 86px; resize: vertical; }
-  input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72); box-shadow: 0 0 0 4px rgba(59,130,246,.15); }
-  .primary-button, .danger-button { border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 17px; padding: 12px 15px; font-weight: 900; cursor: pointer; }
-  .primary-button { background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; box-shadow: 0 18px 40px rgba(59,130,246,.18); }
-  .primary-button:disabled { opacity: .5; cursor: not-allowed; }
-  .danger-button { background: rgba(239,68,68,.14); color: #fecaca; border: 1px solid rgba(239,68,68,.35); }
-  .full { width: 100%; }
-  .category-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
-  .category-chip { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: #e2e8f0; border-radius: 999px; padding: 9px 11px; cursor: pointer; font-size: 13px; font-weight: 800; }
-  .category-chip span { color: #93c5fd; margin-left: 5px; }
-  .category-chip.active { background: white; color: #0f172a; }
-  .idea-list { display: grid; gap: 12px; max-height: 760px; overflow: auto; padding-right: 4px; }
-  .idea-card { border: 1px solid rgba(255,255,255,.12); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.045)); border-radius: 24px; padding: 16px; cursor: pointer; position: relative; overflow: hidden; }
-  .idea-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--accent); }
-  .idea-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.24); transition: .18s ease; }
-  .idea-topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  .category-badge { color: #e2e8f0; background: rgba(255,255,255,.08); padding: 7px 9px; border-radius: 999px; font-weight: 900; font-size: 12px; }
-  .vote-button { border: 0; background: rgba(255,255,255,.1); color: white; border-radius: 999px; padding: 7px 10px; font-weight: 900; cursor: pointer; }
-  .idea-card h4 { margin: 14px 0 6px; font-size: 18px; letter-spacing: -.03em; }
-  .idea-card p { margin: 0; color: #cbd5e1; line-height: 1.45; font-size: 14px; }
-  .card-footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; color: #94a3b8; font-size: 12px; font-weight: 800; }
-  .card-footer span { display: inline-flex; align-items: center; gap: 5px; }
-  .days-stack { display: grid; gap: 14px; }
-  .day-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 27px; padding: 16px; }
-  .day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .day-header p, .day-header h4 { margin: 0; }
-  .day-header p { color: #93a4bd; font-weight: 900; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
-  .day-header h4 { font-size: 21px; letter-spacing: -.04em; }
-  .day-header span { color: #cbd5e1; font-size: 12px; font-weight: 900; padding: 8px 10px; border-radius: 999px; background: rgba(255,255,255,.08); }
-  .empty-day, .empty-state { width: 100%; border: 1px dashed rgba(255,255,255,.18); background: rgba(255,255,255,.04); color: #94a3b8; border-radius: 20px; padding: 18px; text-align: center; }
-  .timeline { display: grid; gap: 10px; }
-  .timeline-item { width: 100%; text-align: left; border: 1px solid rgba(255,255,255,.1); background: rgba(2,6,23,.36); border-radius: 20px; padding: 12px; display: grid; grid-template-columns: 88px 1fr; gap: 12px; color: white; cursor: pointer; }
-  .timeline-item:hover { border-color: rgba(255,255,255,.24); }
-  .time-chip { color: #0f172a; background: linear-gradient(135deg, #ffffff, #dbeafe); border-radius: 15px; display: grid; place-items: center; min-height: 54px; font-weight: 950; }
-  .timeline-item span { color: var(--accent); font-weight: 950; font-size: 12px; }
-  .timeline-item strong { display: block; margin-top: 3px; font-size: 16px; letter-spacing: -.03em; }
-  .timeline-item p { color: #94a3b8; margin: 5px 0 0; font-size: 13px; line-height: 1.35; }
-  .modal-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(2,6,23,.74); display: grid; place-items: center; padding: 20px; }
-  .modal { width: min(560px, 100%); border-radius: 30px; padding: 24px; position: relative; max-height: 92vh; overflow: auto; }
-  .modal h3 { margin: 4px 38px 18px 0; font-size: 28px; letter-spacing: -.05em; }
-  .modal label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 13px; margin-bottom: 12px; }
-  .close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: white; cursor: pointer; display: grid; place-items: center; }
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .modal-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
-  @media (max-width: 920px) { .hero-content, .main-grid { grid-template-columns: 1fr; } .hero-content { padding-top: 42px; } }
-  @media (max-width: 640px) { .hero, .main-grid { padding: 16px; } .topbar { align-items: flex-start; } .ghost-button { padding: 9px 10px; font-size: 12px; } .hero h2 { font-size: 44px; } .hero-card, .panel { border-radius: 26px; } .two-col, .timeline-item { grid-template-columns: 1fr; } .time-chip { min-height: 42px; place-items: center start; padding-left: 12px; } }
+:root { color: #f8fafc; background: #06101f; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at top left, rgba(56, 189, 248, .25), transparent 30rem), radial-gradient(circle at top right, rgba(236, 72, 153, .22), transparent 34rem), linear-gradient(135deg, #070d1a 0%, #0b1324 52%, #10172a 100%); }
+button, input, textarea, select { font: inherit; }
+.app-shell { min-height: 100vh; padding-bottom: 64px; }
+.hero { position: relative; overflow: hidden; padding: 24px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.orb { position: absolute; border-radius: 999px; filter: blur(36px); opacity: .35; pointer-events: none; }
+.orb-one { width: 320px; height: 320px; background: #38bdf8; top: -140px; left: -120px; }
+.orb-two { width: 360px; height: 360px; background: #ec4899; right: -130px; bottom: -180px; }
+.topbar, .hero-content, .workspace { max-width: 1240px; margin: 0 auto; position: relative; z-index: 1; }
+.topbar { display: flex; align-items: center; gap: 14px; }
+.brand-mark { width: 50px; height: 50px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, #ffffff, #bdd7ff); color: #0b1425; box-shadow: 0 18px 60px rgba(88,166,255,.35); }
+.topbar h1, .topbar p, .hero h2, .hero p { margin: 0; }
+.topbar h1 { font-size: 22px; letter-spacing: -.04em; }
+.eyebrow { color: #93a4bd; text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 900; }
+.top-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.ghost-button, .icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: white; padding: 10px 14px; border-radius: 999px; cursor: pointer; font-weight: 850; }
+.hero-content { display: grid; grid-template-columns: 1fr 390px; gap: 32px; align-items: end; padding: 68px 0 30px; }
+.pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.1); padding: 9px 13px; border-radius: 999px; color: #dbeafe; font-weight: 900; font-size: 13px; }
+.hero h2 { margin-top: 18px; font-size: clamp(42px, 8vw, 76px); line-height: .92; letter-spacing: -.08em; max-width: 760px; }
+.hero-subtitle { max-width: 720px; color: #cbd5e1; font-size: 17px; line-height: 1.65; margin-top: 20px !important; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.hero-meta span { display: inline-flex; align-items: center; gap: 7px; padding: 10px 12px; border-radius: 999px; background: rgba(15,23,42,.64); border: 1px solid rgba(255,255,255,.1); color: #e2e8f0; font-size: 13px; }
+.hero-card, .panel, .modal, .empty-start { background: rgba(10, 18, 34, .76); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 80px rgba(0,0,0,.35); backdrop-filter: blur(22px); }
+.hero-card { border-radius: 32px; padding: 24px; }
+.hero-card p { color: #cbd5e1; font-weight: 900; }
+.trip-select { margin-top: 10px; }
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
+.stat-grid div { background: rgba(255,255,255,.07); border-radius: 20px; padding: 14px; }
+.stat-grid strong { display: block; font-size: 27px; letter-spacing: -.04em; }
+.stat-grid span { color: #94a3b8; font-size: 12px; font-weight: 800; }
+.workspace { padding: 24px; }
+.page-tabs { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+.tab { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.11); background: rgba(255,255,255,.065); color: #dbeafe; border-radius: 999px; padding: 11px 14px; font-weight: 950; cursor: pointer; }
+.tab.active { background: white; color: #0f172a; }
+.panel, .empty-start { border-radius: 34px; padding: 22px; }
+.section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
+.section-heading h3, .empty-start h3 { margin: 4px 0 0; font-size: 28px; letter-spacing: -.05em; }
+.mini-count { color: #cbd5e1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); padding: 8px 11px; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: nowrap; }
+.add-form { display: grid; grid-template-columns: 1.2fr .75fr 1fr auto; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+.add-form textarea { grid-column: 1 / 4; min-height: 58px; }
+input, textarea, select { width: 100%; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: #f8fafc; border-radius: 16px; padding: 12px 13px; outline: none; }
+select option { background: #0f172a; color: white; }
+textarea { min-height: 86px; resize: vertical; }
+input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72); box-shadow: 0 0 0 4px rgba(59,130,246,.15); }
+.primary-button, .danger-button { border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 17px; padding: 12px 15px; font-weight: 950; cursor: pointer; }
+.primary-button { background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; box-shadow: 0 18px 40px rgba(59,130,246,.18); }
+.primary-button:disabled { opacity: .48; cursor: not-allowed; }
+.danger-button { background: rgba(239,68,68,.14); color: #fecaca; border: 1px solid rgba(239,68,68,.35); }
+.full { width: 100%; }
+.category-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.category-chip { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: #e2e8f0; border-radius: 999px; padding: 9px 11px; cursor: pointer; font-size: 13px; font-weight: 900; }
+.category-chip span { color: #93c5fd; margin-left: 5px; }
+.category-chip.active { background: white; color: #0f172a; }
+.idea-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.idea-card { border: 1px solid rgba(255,255,255,.12); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.045)); border-radius: 24px; padding: 16px; cursor: pointer; position: relative; overflow: hidden; min-height: 160px; }
+.idea-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--accent); }
+.idea-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.24); transition: .18s ease; }
+.idea-topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.category-badge { color: #e2e8f0; background: rgba(255,255,255,.08); padding: 7px 9px; border-radius: 999px; font-weight: 950; font-size: 12px; }
+.vote-button { border: 0; background: rgba(255,255,255,.1); color: white; border-radius: 999px; padding: 7px 10px; font-weight: 950; cursor: pointer; }
+.idea-card h4 { margin: 14px 0 6px; font-size: 18px; letter-spacing: -.03em; }
+.idea-card p { margin: 0; color: #cbd5e1; line-height: 1.45; font-size: 14px; }
+.card-footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; color: #94a3b8; font-size: 12px; font-weight: 850; }
+.card-footer span { display: inline-flex; align-items: center; gap: 5px; }
+.days-stack { display: grid; gap: 14px; }
+.day-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 27px; padding: 16px; }
+.day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.day-header p, .day-header h4 { margin: 0; }
+.day-header p { color: #93a4bd; font-weight: 950; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+.day-header h4 { font-size: 21px; letter-spacing: -.04em; }
+.day-header span { color: #cbd5e1; font-size: 12px; font-weight: 950; padding: 8px 10px; border-radius: 999px; background: rgba(255,255,255,.08); }
+.empty-day, .empty-state { width: 100%; border: 1px dashed rgba(255,255,255,.18); background: rgba(255,255,255,.04); color: #94a3b8; border-radius: 20px; padding: 18px; text-align: center; }
+.empty-start { max-width: 720px; margin: 46px auto; text-align: center; padding: 42px; }
+.empty-start p:not(.eyebrow) { color: #cbd5e1; line-height: 1.6; }
+.empty-icon { width: 70px; height: 70px; border-radius: 26px; background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; display: grid; place-items: center; margin: 0 auto 16px; }
+.timeline { display: grid; gap: 10px; }
+.timeline-item { width: 100%; text-align: left; border: 1px solid rgba(255,255,255,.1); background: rgba(2,6,23,.36); border-radius: 20px; padding: 12px; display: grid; grid-template-columns: 92px 1fr; gap: 12px; color: white; cursor: pointer; }
+.timeline-item:hover { border-color: rgba(255,255,255,.24); }
+.time-chip { color: #0f172a; background: linear-gradient(135deg, #ffffff, #dbeafe); border-radius: 15px; display: grid; place-items: center; min-height: 56px; font-weight: 950; }
+.timeline-item span { color: var(--accent); font-weight: 950; font-size: 12px; }
+.timeline-item strong { display: block; margin-top: 3px; font-size: 16px; letter-spacing: -.03em; }
+.timeline-item p { color: #94a3b8; margin: 5px 0 0; font-size: 13px; line-height: 1.35; }
+.timeline-item em { color: #cbd5e1; font-style: normal; display: inline-flex; gap: 5px; align-items: center; margin-top: 8px; font-size: 12px; }
+.calendar-heading { align-items: flex-start; }
+.calendar-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.calendar-controls strong { min-width: 160px; text-align: center; }
+.mode-toggle { display: flex; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); padding: 4px; border-radius: 999px; }
+.mode-toggle button { border: 0; color: #dbeafe; background: transparent; border-radius: 999px; padding: 8px 11px; font-weight: 950; cursor: pointer; text-transform: capitalize; }
+.mode-toggle button.active { color: #0f172a; background: white; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.calendar-grid.week .calendar-cell { min-height: 360px; }
+.calendar-cell { min-height: 150px; border-radius: 20px; padding: 10px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); overflow: hidden; }
+.calendar-cell.muted { opacity: .38; }
+.cell-date { display: flex; align-items: center; justify-content: space-between; color: #94a3b8; font-size: 12px; font-weight: 950; margin-bottom: 8px; }
+.cell-date strong { color: white; font-size: 17px; }
+.cell-items { display: grid; gap: 6px; }
+.mini-calendar-item { width: 100%; text-align: left; border: 1px solid rgba(255,255,255,.1); border-left: 4px solid var(--accent); background: rgba(2,6,23,.42); color: white; border-radius: 13px; padding: 8px; font-size: 12px; cursor: pointer; overflow: hidden; }
+.mini-calendar-item span { color: #bfdbfe; font-weight: 950; }
+.mini-calendar-item em { display: block; color: #94a3b8; font-style: normal; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.more-pill { color: #cbd5e1; font-size: 12px; font-weight: 950; padding: 6px 8px; background: rgba(255,255,255,.08); border-radius: 999px; display: inline-block; }
+.year-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.month-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 22px; padding: 16px; min-height: 190px; }
+.month-card h4 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
+.month-card p { margin: 6px 0 12px; color: #94a3b8; font-weight: 850; font-size: 13px; }
+.month-items { display: grid; gap: 7px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 20; background: rgba(2,6,23,.74); display: grid; place-items: center; padding: 20px; }
+.modal { width: min(580px, 100%); border-radius: 30px; padding: 24px; position: relative; max-height: 92vh; overflow: auto; }
+.modal h3 { margin: 4px 38px 18px 0; font-size: 28px; letter-spacing: -.05em; }
+.modal label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 13px; margin-bottom: 12px; }
+.close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: white; cursor: pointer; display: grid; place-items: center; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+@media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .hero, .workspace { padding: 16px; } .topbar { align-items: flex-start; } .top-actions { width: 100%; margin-left: 0; } .hero h2 { font-size: 44px; } .add-form, .two-col, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; } .add-form textarea { grid-column: auto; } .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; } .calendar-controls { justify-content: flex-start; } .section-heading { align-items: flex-start; flex-direction: column; } }
 `;
