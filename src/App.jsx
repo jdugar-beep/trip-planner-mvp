@@ -3,111 +3,81 @@ import {
   CalendarDays,
   Plus,
   Sparkles,
-  Clock,
-  Link as LinkIcon,
-  MapPin,
-  Wand2,
-  X,
-  Edit3,
-  Trash2,
-  CheckCircle2,
-  LayoutGrid,
-  ListTodo,
-  CalendarRange,
-  ChevronLeft,
-  ChevronRight,
   Plane,
   Hotel,
+  MapPin,
+  Clock,
+  Link as LinkIcon,
+  Trash2,
+  Edit3,
+  CheckCircle2,
   Users,
-  Briefcase,
+  Bell,
   Settings,
-  UserCircle,
+  User,
+  ChevronLeft,
+  ChevronRight,
+  CalendarRange,
+  ListTodo,
+  ClipboardList,
+  X,
   Sun,
   Moon,
-  Bell,
+  Search,
+  Vote,
+  Wand2,
 } from "lucide-react";
 
-const CATEGORIES = [
-  { key: "breakfast", label: "Breakfast", emoji: "🥐", accent: "#F59E0B", defaultTime: "09:30" },
-  { key: "lunch", label: "Lunch", emoji: "🥗", accent: "#10B981", defaultTime: "13:00" },
-  { key: "dinner", label: "Dinner", emoji: "🍝", accent: "#EF4444", defaultTime: "20:00" },
-  { key: "activity", label: "Activity", emoji: "🎟️", accent: "#8B5CF6", defaultTime: "15:00" },
-  { key: "drinks", label: "Drinks", emoji: "🍸", accent: "#EC4899", defaultTime: "21:30" },
-  { key: "sightseeing", label: "Sightseeing", emoji: "🏛️", accent: "#3B82F6", defaultTime: "11:00" },
-  { key: "exploring", label: "Exploring", emoji: "🚶", accent: "#14B8A6", defaultTime: "17:00" },
-];
+const CATEGORIES = ["breakfast", "lunch", "dinner", "activity", "drinks", "sightseeing", "exploring"];
+const CATEGORY_LABELS = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+  activity: "Activity",
+  drinks: "Drinks",
+  sightseeing: "Sightseeing",
+  exploring: "Exploring",
+};
+const CATEGORY_EMOJIS = {
+  breakfast: "🥐",
+  lunch: "🥗",
+  dinner: "🍝",
+  activity: "🎟️",
+  drinks: "🍸",
+  sightseeing: "🏛️",
+  exploring: "🚶",
+};
+const PERIOD_TIMES = { morning: "09:30", afternoon: "14:00", evening: "19:00" };
+const uid = () => Math.random().toString(36).slice(2, 10);
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
-const STORAGE_KEY = "its-a-trip-multitrip-v1";
-const SETTINGS_KEY = "its-a-trip-settings-v1";
-
-const TIME_OF_DAY_OPTIONS = [
-  { key: "", label: "No time preference", fallback: "" },
-  { key: "morning", label: "Morning", fallback: "09:30" },
-  { key: "afternoon", label: "Afternoon", fallback: "14:00" },
-  { key: "evening", label: "Evening", fallback: "19:30" },
-];
-
-function getTimeOfDayLabel(key) {
-  return TIME_OF_DAY_OPTIONS.find((option) => option.key === key)?.label || "";
+function addDays(date, days) {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 }
-
-function resolveScheduleTime(idea, category) {
-  if (idea.time) return idea.time;
-  const bucket = TIME_OF_DAY_OPTIONS.find((option) => option.key === idea.timeOfDay);
-  return bucket?.fallback || category.defaultTime;
-}
-
-function uid() {
-  return crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(dateString, days) {
-  const date = new Date((dateString || todayISO()) + "T12:00:00");
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function monthStart(date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function weekStart(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
-  d.setHours(12, 0, 0, 0);
-  return d;
-}
-
-function formatDateLabel(dateString, opts = {}) {
-  if (!dateString) return "Unscheduled";
-  const date = new Date(dateString + "T12:00:00");
-  return date.toLocaleDateString(undefined, opts.short ? { month: "short", day: "numeric" } : { weekday: "short", month: "short", day: "numeric" });
-}
-
-function getDateRange(start, end) {
+function daysBetween(start, end) {
   if (!start || !end) return [];
-  const dates = [];
-  const cursor = new Date(start + "T12:00:00");
-  const last = new Date(end + "T12:00:00");
-  if (cursor > last) return [];
-  while (cursor <= last) {
-    dates.push(cursor.toISOString().slice(0, 10));
-    cursor.setDate(cursor.getDate() + 1);
+  const out = [];
+  let d = start;
+  while (d <= end) {
+    out.push(d);
+    d = addDays(d, 1);
+    if (out.length > 370) break;
   }
-  return dates;
+  return out;
 }
-
-function getCategory(categoryKey) {
-  return CATEGORIES.find((cat) => cat.key === categoryKey) || CATEGORIES[0];
+function prettyDate(iso, opts = {}) {
+  if (!iso) return "";
+  return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, opts.month ? opts : { weekday: "short", month: "short", day: "numeric" });
 }
-
-function makeBlankTrip() {
-  const start = todayISO();
+function timeLabel(t, period) {
+  if (t) return new Date(`2026-01-01T${t}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (period) return period[0].toUpperCase() + period.slice(1);
+  return "Flexible";
+}
+function defaultTrip() {
+  const start = todayIso();
   return {
     id: uid(),
     name: "New Trip",
@@ -116,971 +86,241 @@ function makeBlankTrip() {
     endDate: addDays(start, 3),
     ideas: [],
     hotels: [],
-    flights: [],
-    createdAt: new Date().toISOString(),
+    travelers: [],
   };
 }
 
 export default function App() {
-  const [trips, setTrips] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    } catch {
-      return [];
-    }
-  });
-  const [activeTripId, setActiveTripId] = useState(() => trips[0]?.id || "");
-  const [page, setPage] = useState("board");
-  const [activeCategory, setActiveCategory] = useState("all");
-  const [editingIdea, setEditingIdea] = useState(null);
-  const [showTripEditor, setShowTripEditor] = useState(false);
-  const [calendarMode, setCalendarMode] = useState("month");
-  const [calendarCursor, setCalendarCursor] = useState(() => new Date(todayISO() + "T12:00:00"));
-  const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "", date: "", time: "", timeOfDay: "" });
-  const [showSettings, setShowSettings] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
-  const [theme, setTheme] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}").theme || "dark";
-    } catch {
-      return "dark";
-    }
-  });
+  const [trips, setTrips] = useLocalStorage("trip-planner-mobile-beta-trips", []);
+  const [activeTripId, setActiveTripId] = useLocalStorage("trip-planner-mobile-beta-active", null);
+  const [page, setPage] = useState("planning");
+  const [theme, setTheme] = useLocalStorage("trip-planner-mobile-beta-theme", "dark");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tripEditorOpen, setTripEditorOpen] = useState(false);
+  const [ideaEditor, setIdeaEditor] = useState(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
-    if (trips.length && !trips.some((trip) => trip.id === activeTripId)) setActiveTripId(trips[0].id);
-  }, [trips, activeTripId]);
+    if (trips.length && !trips.some((t) => t.id === activeTripId)) setActiveTripId(trips[0].id);
+  }, [trips, activeTripId, setActiveTripId]);
 
-  useEffect(() => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ theme }));
-  }, [theme]);
+  const activeTrip = trips.find((t) => t.id === activeTripId) || null;
 
-  const activeTrip = trips.find((trip) => trip.id === activeTripId) || null;
-  const tripDates = useMemo(() => getDateRange(activeTrip?.startDate, activeTrip?.endDate), [activeTrip]);
-  const ideas = activeTrip?.ideas || [];
-  const hotels = activeTrip?.hotels || [];
-  const flights = activeTrip?.flights || [];
-  const scheduledIdeas = ideas.filter((idea) => idea.date).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-  const unscheduledIdeas = ideas.filter((idea) => !idea.date);
-  const filteredIdeas = ideas.filter((idea) => activeCategory === "all" || idea.category === activeCategory);
-
-  const allScheduledItems = useMemo(() => {
-    return trips.flatMap((trip) =>
-      (trip.ideas || [])
-        .filter((idea) => idea.date)
-        .map((idea) => ({ ...idea, tripId: trip.id, tripName: trip.name, tripLocation: trip.location }))
-    );
-  }, [trips]);
-
-  const categoryCounts = CATEGORIES.reduce((acc, cat) => {
-    acc[cat.key] = ideas.filter((idea) => idea.category === cat.key).length;
-    return acc;
-  }, {});
-
+  function updateTrip(id, patch) {
+    setTrips((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+  function mutateActiveTrip(fn) {
+    if (!activeTrip) return;
+    setTrips((prev) => prev.map((t) => (t.id === activeTrip.id ? fn(t) : t)));
+  }
   function addTrip() {
-    const trip = makeBlankTrip();
-    setTrips((current) => [trip, ...current]);
-    setActiveTripId(trip.id);
-    setPage("board");
-    setShowTripEditor(true);
+    const t = defaultTrip();
+    setTrips((prev) => [...prev, t]);
+    setActiveTripId(t.id);
+    setPage("planning");
+    setTripEditorOpen(true);
   }
-
-  function updateTrip(updates) {
-    if (!activeTrip) return;
-    setTrips((current) => current.map((trip) => (trip.id === activeTrip.id ? { ...trip, ...updates } : trip)));
+  function deleteTrip(id) {
+    setTrips((prev) => prev.filter((t) => t.id !== id));
+    if (activeTripId === id) setActiveTripId(trips.find((t) => t.id !== id)?.id || null);
   }
-
-  function deleteTrip() {
-    if (!activeTrip) return;
-    setTrips((current) => current.filter((trip) => trip.id !== activeTrip.id));
-    setShowTripEditor(false);
-    setEditingIdea(null);
-  }
-
-  function addIdea(event) {
-    event.preventDefault();
-    if (!activeTrip || !newIdea.title.trim()) return;
-    const idea = {
-      id: uid(),
-      title: newIdea.title.trim(),
-      category: newIdea.category,
-      link: newIdea.link.trim(),
-      notes: newIdea.notes.trim(),
-      votes: 0,
-      date: newIdea.date || "",
-      time: newIdea.time || "",
-      timeOfDay: newIdea.timeOfDay || "",
-    };
-    updateTrip({ ideas: [idea, ...ideas] });
-    setNewIdea({ title: "", category: newIdea.category, link: "", notes: "", date: "", time: "", timeOfDay: "" });
-  }
-
-  function updateIdea(id, updates) {
-    const updatedIdeas = ideas.map((idea) => (idea.id === id ? { ...idea, ...updates } : idea));
-    updateTrip({ ideas: updatedIdeas });
-    setEditingIdea((current) => (current?.id === id ? { ...current, ...updates } : current));
-  }
-
-  function deleteIdea(id) {
-    updateTrip({ ideas: ideas.filter((idea) => idea.id !== id) });
-    setEditingIdea(null);
-  }
-
-  function autoBuildItinerary() {
-    if (!activeTrip || !tripDates.length) return;
-    const assignments = new Map();
-    CATEGORIES.forEach((cat) => {
-      const categoryIdeas = ideas
-        .filter((idea) => idea.category === cat.key)
-        .sort((a, b) => b.votes - a.votes);
-
-      // Fixed-date ideas keep the date/time the user entered on the planning board.
-      categoryIdeas
-        .filter((idea) => idea.date)
-        .forEach((idea) => assignments.set(idea.id, { date: idea.date, time: resolveScheduleTime(idea, cat), timeOfDay: idea.timeOfDay || "" }));
-
-      // Flexible ideas fill the remaining trip days by vote count.
-      const takenDates = new Set(categoryIdeas.filter((idea) => idea.date).map((idea) => idea.date));
-      const openDates = tripDates.filter((date) => !takenDates.has(date));
-      categoryIdeas
-        .filter((idea) => !idea.date)
-        .slice(0, openDates.length)
-        .forEach((idea, index) => assignments.set(idea.id, { date: openDates[index % openDates.length], time: resolveScheduleTime(idea, cat), timeOfDay: idea.timeOfDay || "" }));
+  function autoBuild() {
+    mutateActiveTrip((trip) => {
+      const dates = daysBetween(trip.startDate, trip.endDate);
+      if (!dates.length) return trip;
+      const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, 0]));
+      const sorted = [...trip.ideas].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+      const scheduled = sorted.map((idea, i) => {
+        if (idea.date) return { ...idea, scheduledDate: idea.date, scheduledTime: idea.time || PERIOD_TIMES[idea.period] || "12:00" };
+        const catIndex = byCategory[idea.category] || 0;
+        byCategory[idea.category] = catIndex + 1;
+        const assignedDate = dates[catIndex % dates.length] || dates[i % dates.length];
+        return { ...idea, scheduledDate: assignedDate, scheduledTime: idea.time || PERIOD_TIMES[idea.period] || defaultTimeForCategory(idea.category) };
+      });
+      return { ...trip, ideas: scheduled };
     });
-    updateTrip({ ideas: ideas.map((idea) => (assignments.has(idea.id) ? { ...idea, ...assignments.get(idea.id) } : idea)) });
     setPage("itinerary");
   }
 
-  function addHotel(hotel) {
-    if (!activeTrip || !hotel.name.trim()) return;
-    updateTrip({ hotels: [{ id: uid(), ...hotel, name: hotel.name.trim() }, ...hotels] });
-  }
-
-  function updateHotel(id, updates) {
-    updateTrip({ hotels: hotels.map((hotel) => (hotel.id === id ? { ...hotel, ...updates } : hotel)) });
-  }
-
-  function deleteHotel(id) {
-    updateTrip({ hotels: hotels.filter((hotel) => hotel.id !== id) });
-  }
-
-  function addFlight(flight) {
-    if (!activeTrip || !flight.person.trim()) return;
-    updateTrip({ flights: [{ id: uid(), ...flight, person: flight.person.trim() }, ...flights] });
-  }
-
-  function updateFlight(id, updates) {
-    updateTrip({ flights: flights.map((flight) => (flight.id === id ? { ...flight, ...updates } : flight)) });
-  }
-
-  function deleteFlight(id) {
-    updateTrip({ flights: flights.filter((flight) => flight.id !== id) });
-  }
-
   return (
-    <div className={`app-shell ${theme === "light" ? "light-mode" : "dark-mode"}`}>
-      <style>{styles}</style>
-      <header className="hero">
-        <div className="orb orb-one" />
-        <div className="orb orb-two" />
-        <nav className="topbar">
-          <div className="brand-left">
-            <div className="brand-mark"><Plane size={24} /></div>
-            <div>
-              <p className="eyebrow">Collaborative trip planner</p>
-              <h1>It’s a Trip</h1>
-            </div>
-          </div>
-
-          <div className="desktop-nav-shell">
-            {trips.length ? (
-              <select className="top-trip-select" value={activeTripId} onChange={(e) => setActiveTripId(e.target.value)}>
-                {trips.map((trip) => <option key={trip.id} value={trip.id}>{trip.name}</option>)}
-              </select>
-            ) : (
-              <button className="top-trip-select faux-select" onClick={addTrip}>Create first trip</button>
-            )}
-            <button className="nav-icon-button" title="Notifications"><Bell size={18} /></button>
-            <button className={page === "board" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("board")}>Planning</button>
-            <button className={page === "logistics" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("logistics")}>Logistics</button>
-            <button className={page === "itinerary" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("itinerary")}>Itinerary</button>
-            <button className={page === "calendar" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("calendar")}>Calendar</button>
-            <button className="desktop-nav-item add-trip-item" onClick={addTrip}><Plus size={16} /> Add trip</button>
-            <button className="desktop-nav-item" onClick={() => setShowSettings(true)}><Settings size={16} /> Settings</button>
-          </div>
-
-          <div className="mobile-top-actions">
-            {activeTrip && <button className="ghost-button" onClick={() => setShowTripEditor(true)}><Edit3 size={16} /> Edit trip</button>}
-            <button className="ghost-button" onClick={() => setShowSettings(true)}><Settings size={16} /></button>
-          </div>
-        </nav>
-
-        <section className="hero-content">
-          <div>
-            <p className="pill"><Sparkles size={14} /> Ideas become itineraries</p>
-            <h2>{activeTrip ? activeTrip.name : "Plan a trip from scratch."}</h2>
-            <p className="hero-subtitle">
-              Create multiple trips, add links and ideas by category, vote on options, then schedule each card into a clean day-by-day itinerary.
-            </p>
-            <div className="hero-meta">
-              <span><MapPin size={16} /> {activeTrip?.location || "No location yet"}</span>
-              <span><CalendarDays size={16} /> {activeTrip ? `${formatDateLabel(activeTrip.startDate)} – ${formatDateLabel(activeTrip.endDate)}` : "Add dates"}</span>
-              <span><LayoutGrid size={16} /> {trips.length} trip{trips.length === 1 ? "" : "s"}</span>
-            </div>
-          </div>
-          <div className="hero-card">
-            <p>Current trip</p>
-            {trips.length ? (
-              <select className="trip-select" value={activeTripId} onChange={(e) => setActiveTripId(e.target.value)}>
-                {trips.map((trip) => <option key={trip.id} value={trip.id}>{trip.name}</option>)}
-              </select>
-            ) : (
-              <button className="primary-button full" onClick={addTrip}><Plus size={17} /> Create your first trip</button>
-            )}
-            <div className="stat-grid">
-              <div><strong>{ideas.length}</strong><span>Ideas</span></div>
-              <div><strong>{scheduledIdeas.length}</strong><span>Scheduled</span></div>
-              <div><strong>{tripDates.length}</strong><span>Days</span></div>
-            </div>
-            <button className="primary-button full" onClick={autoBuildItinerary} disabled={!activeTrip || !tripDates.length || !ideas.length}>
-              <Wand2 size={17} /> Auto-build draft
-            </button>
-          </div>
-        </section>
-      </header>
-
-      <main className="workspace">
-        {!activeTrip && page !== "calendar" ? (
-          <EmptyCreateTrip onAddTrip={addTrip} />
-        ) : page === "board" ? (
-          <PlanningBoard
-            ideas={filteredIdeas}
-            totalIdeas={ideas.length}
-            activeCategory={activeCategory}
-            setActiveCategory={setActiveCategory}
-            categoryCounts={categoryCounts}
-            newIdea={newIdea}
-            setNewIdea={setNewIdea}
-            addIdea={addIdea}
-            setEditingIdea={setEditingIdea}
-            updateIdea={updateIdea}
-            tripDates={tripDates}
-          />
-        ) : page === "itinerary" ? (
-          <ItineraryPage tripDates={tripDates} scheduledIdeas={scheduledIdeas} unscheduledIdeas={unscheduledIdeas} setEditingIdea={setEditingIdea} />
-        ) : page === "logistics" ? (
-          <LogisticsPage hotels={hotels} flights={flights} addHotel={addHotel} updateHotel={updateHotel} deleteHotel={deleteHotel} addFlight={addFlight} updateFlight={updateFlight} deleteFlight={deleteFlight} />
+    <div className={`app ${theme}`}>
+      <style>{css}</style>
+      <DesktopTopBar
+        trips={trips}
+        activeTrip={activeTrip}
+        activeTripId={activeTripId}
+        setActiveTripId={setActiveTripId}
+        page={page}
+        setPage={setPage}
+        addTrip={addTrip}
+        openSettings={() => setSettingsOpen(true)}
+      />
+      <main className="shell">
+        <MobileHero activeTrip={activeTrip} openTripEditor={() => setTripEditorOpen(true)} />
+        {!activeTrip ? (
+          <EmptyState addTrip={addTrip} />
         ) : (
-          <CalendarPage
-            trips={trips}
-            calendarCursor={calendarCursor}
-            setCalendarCursor={setCalendarCursor}
-            setActiveTripId={setActiveTripId}
-            setPage={setPage}
-          />
+          <>
+            <TripControlStrip activeTrip={activeTrip} openTripEditor={() => setTripEditorOpen(true)} autoBuild={autoBuild} />
+            {page === "planning" && <PlanningPage trip={activeTrip} mutateTrip={mutateActiveTrip} editIdea={setIdeaEditor} />}
+            {page === "logistics" && <LogisticsPage trip={activeTrip} mutateTrip={mutateActiveTrip} />}
+            {page === "itinerary" && <ItineraryPage trip={activeTrip} editIdea={setIdeaEditor} />}
+            {page === "calendar" && <CalendarPage trips={trips} setActiveTripId={setActiveTripId} setPage={setPage} />}
+          </>
         )}
       </main>
+      <MobileBottomNav page={page} setPage={setPage} addTrip={addTrip} />
+      {settingsOpen && <SettingsModal theme={theme} setTheme={setTheme} close={() => setSettingsOpen(false)} />}
+      {tripEditorOpen && activeTrip && <TripEditor trip={activeTrip} save={(patch) => updateTrip(activeTrip.id, patch)} deleteTrip={() => deleteTrip(activeTrip.id)} close={() => setTripEditorOpen(false)} />}
+      {ideaEditor && activeTrip && <IdeaEditor idea={ideaEditor} trip={activeTrip} mutateTrip={mutateActiveTrip} close={() => setIdeaEditor(null)} />}
+    </div>
+  );
+}
 
-      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
-        <button className={page === "board" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("board")}>
-          <ListTodo size={20} />
-          <span>Planning</span>
-        </button>
-        <button className={page === "logistics" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("logistics")}>
-          <Hotel size={20} />
-          <span>Logistics</span>
-        </button>
-        <button className="mobile-nav-add" onClick={addTrip} aria-label="Add trip">
-          <Plus size={30} />
-        </button>
-        <button className={page === "itinerary" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("itinerary")}>
-          <CalendarDays size={20} />
-          <span>Itinerary</span>
-        </button>
-        <button className={page === "calendar" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("calendar")}>
-          <CalendarRange size={20} />
-          <span>Calendar</span>
-        </button>
+function useLocalStorage(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  }, [key, value]);
+  return [value, setValue];
+}
+
+function DesktopTopBar({ trips, activeTripId, setActiveTripId, page, setPage, addTrip, openSettings }) {
+  return (
+    <header className="desktopTop">
+      <div className="brand"><span className="logo">✈️</span><div><b>Trip Studio</b><small>collaborative travel planning</small></div></div>
+      <select value={activeTripId || ""} onChange={(e) => setActiveTripId(e.target.value)} className="tripSelect">
+        <option value="" disabled>Select trip</option>
+        {trips.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      <button className="iconBtn"><Bell size={18} /></button>
+      <nav className="desktopNav">
+        <button className={page === "planning" ? "active" : ""} onClick={() => setPage("planning")}>Planning</button>
+        <button className={page === "logistics" ? "active" : ""} onClick={() => setPage("logistics")}>Logistics</button>
+        <button className={page === "itinerary" ? "active" : ""} onClick={() => setPage("itinerary")}>Itinerary</button>
+        <button className={page === "calendar" ? "active" : ""} onClick={() => setPage("calendar")}>Calendar</button>
       </nav>
-
-      {showTripEditor && activeTrip && (
-        <div className="modal-backdrop" onClick={() => setShowTripEditor(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button className="close" onClick={() => setShowTripEditor(false)}><X size={18} /></button>
-            <p className="eyebrow">Trip setup</p>
-            <h3>{activeTrip.name === "New Trip" ? "Create trip" : "Edit trip"}</h3>
-            <label>Trip name<input value={activeTrip.name} onChange={(e) => updateTrip({ name: e.target.value })} /></label>
-            <label>Location<input value={activeTrip.location} onChange={(e) => updateTrip({ location: e.target.value })} placeholder="City, country, region..." /></label>
-            <div className="two-col">
-              <label>Start date<input type="date" value={activeTrip.startDate} onChange={(e) => updateTrip({ startDate: e.target.value })} /></label>
-              <label>End date<input type="date" value={activeTrip.endDate} onChange={(e) => updateTrip({ endDate: e.target.value })} /></label>
-            </div>
-            <div className="modal-actions">
-              <button className="danger-button" onClick={deleteTrip}><Trash2 size={16} /> Delete trip</button>
-              <button className="primary-button" onClick={() => setShowTripEditor(false)}><CheckCircle2 size={17} /> Save trip</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
-      {showSettings && (
-        <div className="modal-backdrop" onClick={() => setShowSettings(false)}>
-          <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="close" onClick={() => setShowSettings(false)}><X size={18} /></button>
-            <p className="eyebrow">App settings</p>
-            <h3>Settings</h3>
-            <div className="settings-section">
-              <strong>Appearance</strong>
-              <p>Choose how the planner looks while you build trips.</p>
-              <div className="theme-toggle">
-                <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button>
-                <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button>
-              </div>
-            </div>
-            <button className="profile-row" onClick={() => { setShowProfile(true); setShowSettings(false); }}>
-              <UserCircle size={22} />
-              <span><strong>Profile</strong><em>View your full profile — coming next</em></span>
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showProfile && (
-        <div className="modal-backdrop" onClick={() => setShowProfile(false)}>
-          <div className="modal profile-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="close" onClick={() => setShowProfile(false)}><X size={18} /></button>
-            <div className="profile-avatar"><UserCircle size={42} /></div>
-            <p className="eyebrow">Profile</p>
-            <h3>Your profile</h3>
-            <p className="profile-copy">This is the future home for your name, photo, saved trips, travel style, followers, shared itineraries, and preferences.</p>
-            <div className="profile-preview-grid">
-              <div><strong>{trips.length}</strong><span>Trips</span></div>
-              <div><strong>{allScheduledItems.length}</strong><span>Scheduled plans</span></div>
-              <div><strong>{theme}</strong><span>Theme</span></div>
-            </div>
-            <button className="primary-button full" onClick={() => setShowProfile(false)}><CheckCircle2 size={17} /> Close</button>
-          </div>
-        </div>
-      )}
-
-      {editingIdea && activeTrip && (
-        <div className="modal-backdrop" onClick={() => setEditingIdea(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button className="close" onClick={() => setEditingIdea(null)}><X size={18} /></button>
-            <p className="eyebrow">Click-to-schedule</p>
-            <h3>{editingIdea.title}</h3>
-            <label>Title<input value={editingIdea.title} onChange={(e) => updateIdea(editingIdea.id, { title: e.target.value })} /></label>
-            <div className="two-col">
-              <label>Category<select value={editingIdea.category} onChange={(e) => updateIdea(editingIdea.id, { category: e.target.value })}>{CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}</select></label>
-              <label>Votes<input type="number" value={editingIdea.votes} onChange={(e) => updateIdea(editingIdea.id, { votes: Number(e.target.value) })} /></label>
-            </div>
-            <div className="two-col">
-              <label>Date<select value={editingIdea.date} onChange={(e) => updateIdea(editingIdea.id, { date: e.target.value })}><option value="">Not scheduled yet</option>{tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}</select></label>
-              <label>Exact time<input type="time" value={editingIdea.time} onChange={(e) => updateIdea(editingIdea.id, { time: e.target.value })} /></label>
-            </div>
-            <label>Time of day
-              <select value={editingIdea.timeOfDay || ""} onChange={(e) => updateIdea(editingIdea.id, { timeOfDay: e.target.value })}>
-                {TIME_OF_DAY_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-              </select>
-            </label>
-            <label>Link<input value={editingIdea.link} onChange={(e) => updateIdea(editingIdea.id, { link: e.target.value })} placeholder="Paste Google Maps, TikTok, restaurant link..." /></label>
-            <label>Notes<textarea value={editingIdea.notes} onChange={(e) => updateIdea(editingIdea.id, { notes: e.target.value })} /></label>
-            <div className="modal-actions">
-              <button className="danger-button" onClick={() => deleteIdea(editingIdea.id)}><Trash2 size={16} /> Delete</button>
-              <button className="primary-button" onClick={() => setEditingIdea(null)}><CheckCircle2 size={17} /> Done</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <button className="orangeBtn" onClick={addTrip}><Plus size={17} /> Add Trip</button>
+      <button className="iconBtn" onClick={openSettings}><Settings size={18} /></button>
+    </header>
+  );
+}
+function MobileHero({ activeTrip, openTripEditor }) {
+  return (
+    <div className="mobileHero">
+      <div><div className="eyebrow">Trip Studio</div><h1>{activeTrip?.name || "Plan your next trip"}</h1>{activeTrip && <p>{activeTrip.location || "Add location"} · {prettyDate(activeTrip.startDate)} – {prettyDate(activeTrip.endDate)}</p>}</div>
+      {activeTrip && <button className="ghostBtn small" onClick={openTripEditor}>Edit</button>}
     </div>
   );
 }
-
-function EmptyCreateTrip({ onAddTrip }) {
+function TripControlStrip({ activeTrip, openTripEditor, autoBuild }) {
   return (
-    <section className="empty-start">
-      <div className="empty-icon"><Plane size={34} /></div>
-      <p className="eyebrow">Blank slate</p>
-      <h3>Create a brand new trip</h3>
-      <p>No dummy data. Start with dates, then add breakfast, lunch, dinner, activities, drinks, sightseeing, and exploring ideas.</p>
-      <button className="primary-button" onClick={onAddTrip}><Plus size={17} /> Add trip</button>
+    <section className="controlStrip">
+      <div className="tripMini"><span>{activeTrip.name}</span><small>{activeTrip.location || "No location yet"} · {prettyDate(activeTrip.startDate, { month: "short", day: "numeric" })}–{prettyDate(activeTrip.endDate, { month: "short", day: "numeric" })}</small></div>
+      <button className="ghostBtn" onClick={openTripEditor}><Edit3 size={15} /> Edit</button>
+      <button className="primaryBtn" onClick={autoBuild}><Wand2 size={16} /> Auto Build</button>
     </section>
   );
 }
-
-function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, categoryCounts, newIdea, setNewIdea, addIdea, setEditingIdea, updateIdea, tripDates }) {
-  return (
-    <section className="panel board-page">
-      <div className="section-heading">
-        <div><p className="eyebrow">Add and vote</p><h3>Planning board</h3></div>
-        <span className="mini-count">{totalIdeas} total ideas</span>
-      </div>
-      <form className="add-form" onSubmit={addIdea}>
-        <input value={newIdea.title} onChange={(e) => setNewIdea({ ...newIdea, title: e.target.value })} placeholder="Spot name, restaurant, activity..." />
-        <select value={newIdea.category} onChange={(e) => setNewIdea({ ...newIdea, category: e.target.value })}>
-          {CATEGORIES.map((cat) => <option key={cat.key} value={cat.key}>{cat.emoji} {cat.label}</option>)}
-        </select>
-        <input value={newIdea.link} onChange={(e) => setNewIdea({ ...newIdea, link: e.target.value })} placeholder="Optional link" />
-        <div className="date-time-row">
-          <select value={newIdea.date} onChange={(e) => setNewIdea({ ...newIdea, date: e.target.value })}>
-            <option value="">Optional date</option>
-            {tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}
-          </select>
-          <input type="time" value={newIdea.time} onChange={(e) => setNewIdea({ ...newIdea, time: e.target.value })} />
-          <select value={newIdea.timeOfDay} onChange={(e) => setNewIdea({ ...newIdea, timeOfDay: e.target.value })}>
-            {TIME_OF_DAY_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-          </select>
-        </div>
-        <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Notes, reservation details, why people should vote for it..." />
-        <button className="primary-button" type="submit"><Plus size={17} /> Add to trip</button>
-      </form>
-
-      <div className="category-cloud">
-        <button className={activeCategory === "all" ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory("all")}>All <span>{totalIdeas}</span></button>
-        {CATEGORIES.map((cat) => (
-          <button key={cat.key} className={activeCategory === cat.key ? "category-chip active" : "category-chip"} onClick={() => setActiveCategory(cat.key)}>
-            {cat.emoji} {cat.label} <span>{categoryCounts[cat.key] || 0}</span>
-          </button>
-        ))}
-      </div>
-
-      {ideas.length ? (
-        <div className="idea-category-list">
-          {CATEGORIES.filter((cat) => activeCategory === "all" || cat.key === activeCategory).map((cat) => {
-            const categoryIdeas = ideas.filter((idea) => idea.category === cat.key);
-            if (!categoryIdeas.length) return null;
-            return (
-              <section className="idea-category-section" key={cat.key}>
-                <div className="idea-category-title">
-                  <span className="category-title-badge" style={{ "--accent": cat.accent }}>{cat.emoji}</span>
-                  <div>
-                    <h4>{cat.label}</h4>
-                    <p>{categoryIdeas.length} idea{categoryIdeas.length === 1 ? "" : "s"}</p>
-                  </div>
-                </div>
-                <div className="idea-grid">
-                  {categoryIdeas.map((idea) => <IdeaCard key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} onVote={() => updateIdea(idea.id, { votes: idea.votes + 1 })} />)}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      ) : <div className="empty-state">No ideas here yet. Add your first spot above.</div>}
-    </section>
-  );
+function EmptyState({ addTrip }) {
+  return <section className="empty"><div className="emptyIcon">🌍</div><h2>Create your first trip</h2><p>Add dates, collect ideas, vote with friends, then turn everything into a clean itinerary.</p><button className="primaryBtn big" onClick={addTrip}><Plus /> Add Trip</button></section>;
 }
 
-function ItineraryPage({ tripDates, scheduledIdeas, unscheduledIdeas, setEditingIdea }) {
-  return (
-    <section className="panel itinerary-page">
-      <div className="section-heading">
-        <div><p className="eyebrow">Scheduled plan</p><h3>Your itinerary</h3></div>
-        <span className="mini-count">{unscheduledIdeas.length} unscheduled</span>
-      </div>
-      {!tripDates.length ? <div className="empty-state">Add trip start and end dates to build an itinerary.</div> : (
-        <div className="days-stack">
-          {tripDates.map((date) => {
-            const dayItems = scheduledIdeas.filter((idea) => idea.date === date);
-            return (
-              <article className="day-card" key={date}>
-                <div className="day-header">
-                  <div><p>{new Date(date + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })}</p><h4>{formatDateLabel(date)}</h4></div>
-                  <span>{dayItems.length} plans</span>
-                </div>
-                {dayItems.length === 0 ? <button className="empty-day">No plans yet. Click a card on the planning board to assign it here.</button> : <div className="timeline">{dayItems.map((idea) => <TimelineItem key={idea.id} idea={idea} onEdit={() => setEditingIdea(idea)} />)}</div>}
-              </article>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-
-function LogisticsPage({ hotels, flights, addHotel, updateHotel, deleteHotel, addFlight, updateFlight, deleteFlight }) {
-  const [logisticsFilter, setLogisticsFilter] = useState("all");
-  const [hotelDraft, setHotelDraft] = useState({ name: "", address: "", checkInDate: "", checkInTime: "", checkOutDate: "", checkOutTime: "", confirmation: "", notes: "" });
-  const [flightDraft, setFlightDraft] = useState({ person: "", direction: "There", airline: "", flightNumber: "", from: "", to: "", date: "", departTime: "", arriveTime: "", confirmation: "", notes: "" });
-
-  function submitHotel(e) {
-    e.preventDefault();
-    addHotel(hotelDraft);
-    setHotelDraft({ name: "", address: "", checkInDate: "", checkInTime: "", checkOutDate: "", checkOutTime: "", confirmation: "", notes: "" });
+function PlanningPage({ trip, mutateTrip, editIdea }) {
+  const [form, setForm] = useState({ title: "", category: "breakfast", link: "", notes: "", date: "", time: "", period: "" });
+  const dates = daysBetween(trip.startDate, trip.endDate);
+  function addIdea() {
+    if (!form.title.trim()) return;
+    const idea = { id: uid(), ...form, votes: 0, scheduledDate: form.date || "", scheduledTime: form.time || (form.date && form.period ? PERIOD_TIMES[form.period] : "") };
+    mutateTrip((t) => ({ ...t, ideas: [idea, ...t.ideas] }));
+    setForm({ title: "", category: form.category, link: "", notes: "", date: "", time: "", period: "" });
   }
-
-  function submitFlight(e) {
-    e.preventDefault();
-    addFlight(flightDraft);
-    setFlightDraft({ person: "", direction: "There", airline: "", flightNumber: "", from: "", to: "", date: "", departTime: "", arriveTime: "", confirmation: "", notes: "" });
+  function vote(id, delta) {
+    mutateTrip((t) => ({ ...t, ideas: t.ideas.map((i) => i.id === id ? { ...i, votes: Math.max(0, (i.votes || 0) + delta) } : i) }));
   }
-
   return (
-    <section className="panel logistics-page">
-      <div className="section-heading">
-        <div><p className="eyebrow">Hotels and flights</p><h3>Logistics</h3></div>
-        <span className="mini-count">{hotels.length} hotel{hotels.length === 1 ? "" : "s"} • {flights.length} flight{flights.length === 1 ? "" : "s"}</span>
-      </div>
-
-      <div className="logistics-filter-tabs" aria-label="Logistics filter">
-        <button className={logisticsFilter === "all" ? "active" : ""} onClick={() => setLogisticsFilter("all")} type="button">All</button>
-        <button className={logisticsFilter === "hotels" ? "active" : ""} onClick={() => setLogisticsFilter("hotels")} type="button"><Hotel size={16} /> Hotels</button>
-        <button className={logisticsFilter === "flights" ? "active" : ""} onClick={() => setLogisticsFilter("flights")} type="button"><Plane size={16} /> Flights</button>
-      </div>
-
-      <div className="logistics-grid">
-        {(logisticsFilter === "all" || logisticsFilter === "hotels") && <form className="logistics-form" onSubmit={submitHotel}>
-          <div className="form-title"><Hotel size={18} /><strong>Add hotel</strong></div>
-          <input value={hotelDraft.name} onChange={(e) => setHotelDraft({ ...hotelDraft, name: e.target.value })} placeholder="Hotel / Airbnb name" />
-          <input value={hotelDraft.address} onChange={(e) => setHotelDraft({ ...hotelDraft, address: e.target.value })} placeholder="Address" />
-          <div className="two-col">
-            <input type="date" value={hotelDraft.checkInDate} onChange={(e) => setHotelDraft({ ...hotelDraft, checkInDate: e.target.value })} />
-            <input type="time" value={hotelDraft.checkInTime} onChange={(e) => setHotelDraft({ ...hotelDraft, checkInTime: e.target.value })} />
-          </div>
-          <div className="two-col">
-            <input type="date" value={hotelDraft.checkOutDate} onChange={(e) => setHotelDraft({ ...hotelDraft, checkOutDate: e.target.value })} />
-            <input type="time" value={hotelDraft.checkOutTime} onChange={(e) => setHotelDraft({ ...hotelDraft, checkOutTime: e.target.value })} />
-          </div>
-          <input value={hotelDraft.confirmation} onChange={(e) => setHotelDraft({ ...hotelDraft, confirmation: e.target.value })} placeholder="Confirmation number / booking link" />
-          <textarea value={hotelDraft.notes} onChange={(e) => setHotelDraft({ ...hotelDraft, notes: e.target.value })} placeholder="Notes: bag drop, room type, who booked it..." />
-          <button className="primary-button" type="submit"><Plus size={17} /> Add hotel</button>
-        </form>}
-
-        {(logisticsFilter === "all" || logisticsFilter === "flights") && <form className="logistics-form" onSubmit={submitFlight}>
-          <div className="form-title"><Plane size={18} /><strong>Add flight</strong></div>
-          <input value={flightDraft.person} onChange={(e) => setFlightDraft({ ...flightDraft, person: e.target.value })} placeholder="Traveler name" />
-          <select value={flightDraft.direction} onChange={(e) => setFlightDraft({ ...flightDraft, direction: e.target.value })}>
-            <option>There</option><option>Back</option><option>Connection</option><option>Other</option>
-          </select>
-          <div className="two-col">
-            <input value={flightDraft.airline} onChange={(e) => setFlightDraft({ ...flightDraft, airline: e.target.value })} placeholder="Airline" />
-            <input value={flightDraft.flightNumber} onChange={(e) => setFlightDraft({ ...flightDraft, flightNumber: e.target.value })} placeholder="Flight #" />
-          </div>
-          <div className="two-col">
-            <input value={flightDraft.from} onChange={(e) => setFlightDraft({ ...flightDraft, from: e.target.value })} placeholder="From" />
-            <input value={flightDraft.to} onChange={(e) => setFlightDraft({ ...flightDraft, to: e.target.value })} placeholder="To" />
-          </div>
-          <div className="three-col">
-            <input type="date" value={flightDraft.date} onChange={(e) => setFlightDraft({ ...flightDraft, date: e.target.value })} />
-            <input type="time" value={flightDraft.departTime} onChange={(e) => setFlightDraft({ ...flightDraft, departTime: e.target.value })} />
-            <input type="time" value={flightDraft.arriveTime} onChange={(e) => setFlightDraft({ ...flightDraft, arriveTime: e.target.value })} />
-          </div>
-          <input value={flightDraft.confirmation} onChange={(e) => setFlightDraft({ ...flightDraft, confirmation: e.target.value })} placeholder="Confirmation number / booking link" />
-          <textarea value={flightDraft.notes} onChange={(e) => setFlightDraft({ ...flightDraft, notes: e.target.value })} placeholder="Seat, terminal, baggage, who is on this flight..." />
-          <button className="primary-button" type="submit"><Plus size={17} /> Add flight</button>
-        </form>}
-      </div>
-
-      <div className="saved-logistics">
-        {(logisticsFilter === "all" || logisticsFilter === "hotels") && <div className="logistics-list">
-          <h4><Hotel size={18} /> Hotel details</h4>
-          {hotels.length ? hotels.map((hotel) => (
-            <article className="logistics-card" key={hotel.id}>
-              <input value={hotel.name} onChange={(e) => updateHotel(hotel.id, { name: e.target.value })} />
-              <input value={hotel.address} onChange={(e) => updateHotel(hotel.id, { address: e.target.value })} placeholder="Address" />
-              <div className="two-col"><label>Check-in<input type="date" value={hotel.checkInDate} onChange={(e) => updateHotel(hotel.id, { checkInDate: e.target.value })} /></label><label>Time<input type="time" value={hotel.checkInTime} onChange={(e) => updateHotel(hotel.id, { checkInTime: e.target.value })} /></label></div>
-              <div className="two-col"><label>Check-out<input type="date" value={hotel.checkOutDate} onChange={(e) => updateHotel(hotel.id, { checkOutDate: e.target.value })} /></label><label>Time<input type="time" value={hotel.checkOutTime} onChange={(e) => updateHotel(hotel.id, { checkOutTime: e.target.value })} /></label></div>
-              <input value={hotel.confirmation} onChange={(e) => updateHotel(hotel.id, { confirmation: e.target.value })} placeholder="Confirmation / link" />
-              <textarea value={hotel.notes} onChange={(e) => updateHotel(hotel.id, { notes: e.target.value })} placeholder="Notes" />
-              <button className="danger-button" onClick={() => deleteHotel(hotel.id)} type="button"><Trash2 size={16} /> Delete hotel</button>
-            </article>
-          )) : <div className="empty-state">No hotel details yet.</div>}
-        </div>}
-
-        {(logisticsFilter === "all" || logisticsFilter === "flights") && <div className="logistics-list">
-          <h4><Users size={18} /> Flight details by person</h4>
-          {flights.length ? flights.map((flight) => (
-            <article className="logistics-card" key={flight.id}>
-              <div className="two-col"><input value={flight.person} onChange={(e) => updateFlight(flight.id, { person: e.target.value })} placeholder="Traveler" /><select value={flight.direction} onChange={(e) => updateFlight(flight.id, { direction: e.target.value })}><option>There</option><option>Back</option><option>Connection</option><option>Other</option></select></div>
-              <div className="two-col"><input value={flight.airline} onChange={(e) => updateFlight(flight.id, { airline: e.target.value })} placeholder="Airline" /><input value={flight.flightNumber} onChange={(e) => updateFlight(flight.id, { flightNumber: e.target.value })} placeholder="Flight #" /></div>
-              <div className="two-col"><input value={flight.from} onChange={(e) => updateFlight(flight.id, { from: e.target.value })} placeholder="From" /><input value={flight.to} onChange={(e) => updateFlight(flight.id, { to: e.target.value })} placeholder="To" /></div>
-              <div className="three-col"><input type="date" value={flight.date} onChange={(e) => updateFlight(flight.id, { date: e.target.value })} /><input type="time" value={flight.departTime} onChange={(e) => updateFlight(flight.id, { departTime: e.target.value })} /><input type="time" value={flight.arriveTime} onChange={(e) => updateFlight(flight.id, { arriveTime: e.target.value })} /></div>
-              <input value={flight.confirmation} onChange={(e) => updateFlight(flight.id, { confirmation: e.target.value })} placeholder="Confirmation / link" />
-              <textarea value={flight.notes} onChange={(e) => updateFlight(flight.id, { notes: e.target.value })} placeholder="Notes" />
-              <button className="danger-button" onClick={() => deleteFlight(flight.id)} type="button"><Trash2 size={16} /> Delete flight</button>
-            </article>
-          )) : <div className="empty-state">No flights yet. Add each person's outbound and return flight one at a time.</div>}
-        </div>}
-      </div>
-    </section>
-  );
-}
-
-function CalendarPage({ trips, calendarCursor, setCalendarCursor, setActiveTripId, setPage }) {
-  function moveCalendar(direction) {
-    const d = new Date(calendarCursor);
-    d.setMonth(d.getMonth() + direction);
-    setCalendarCursor(d);
-  }
-
-  return (
-    <section className="panel calendar-page">
-      <div className="section-heading calendar-heading">
-        <div><p className="eyebrow">All trips</p><h3>Calendar</h3></div>
-        <div className="calendar-controls month-only-controls">
-          <button className="icon-button" onClick={() => moveCalendar(-1)}><ChevronLeft size={18} /></button>
-          <strong>{calendarTitle(calendarCursor)}</strong>
-          <button className="icon-button" onClick={() => moveCalendar(1)}><ChevronRight size={18} /></button>
+    <section className="pageStack">
+      <div className="sectionHead"><div><h2>Planning Board</h2><p>Add options by category. Vote now, schedule later.</p></div></div>
+      <div className="addCard">
+        <div className="formGrid">
+          <input placeholder="Add a place or plan" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>{CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_EMOJIS[c]} {CATEGORY_LABELS[c]}</option>)}</select>
+          <input placeholder="Link optional" value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} />
+          <input placeholder="Notes optional" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <select value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}><option value="">Any date</option>{dates.map((d) => <option value={d} key={d}>{prettyDate(d)}</option>)}</select>
+          <div className="split2"><select value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value, time: "" })}><option value="">Any time</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option></select><input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value, period: "" })} /></div>
         </div>
+        <button className="primaryBtn full" onClick={addIdea}><Plus size={17} /> Add to Board</button>
       </div>
-      {!trips.length ? (
-        <div className="empty-state">Create trips to see them together on your calendar.</div>
-      ) : (
-        <TripMonthCalendar trips={trips} cursor={calendarCursor} setActiveTripId={setActiveTripId} setPage={setPage} />
-      )}
-    </section>
-  );
-}
-
-function calendarTitle(cursor) {
-  return cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
-
-function TripMonthCalendar({ trips, cursor, setActiveTripId, setPage }) {
-  const start = monthStart(cursor);
-  const gridStart = weekStart(start);
-  const days = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(gridStart);
-    d.setDate(gridStart.getDate() + i);
-    days.push(d);
-  }
-
-  return (
-    <div className="calendar-month-shell">
-      <div className="calendar-weekdays">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
-      </div>
-      <div className="calendar-grid trip-calendar-grid">
-        {days.map((day) => {
-          const iso = day.toISOString().slice(0, 10);
-          const muted = day.getMonth() !== cursor.getMonth();
-          const activeTrips = trips.filter((trip) => trip.startDate && trip.endDate && iso >= trip.startDate && iso <= trip.endDate);
+      <div className="categoryStack">
+        {CATEGORIES.map((cat) => {
+          const items = trip.ideas.filter((i) => i.category === cat);
           return (
-            <TripCalendarCell
-              key={iso}
-              iso={iso}
-              date={day}
-              muted={muted}
-              trips={activeTrips}
-              setActiveTripId={setActiveTripId}
-              setPage={setPage}
-            />
+            <section className="categoryBlock" key={cat}>
+              <div className="categoryTitle"><span>{CATEGORY_EMOJIS[cat]}</span><b>{CATEGORY_LABELS[cat]}</b><small>{items.length} ideas</small></div>
+              {items.length === 0 ? <div className="softEmpty">No ideas yet</div> : items.map((idea) => <IdeaCard key={idea.id} idea={idea} vote={vote} edit={() => editIdea(idea)} />)}
+            </section>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
-
-function TripCalendarCell({ iso, date, muted, trips, setActiveTripId, setPage }) {
-  return (
-    <article className={muted ? "calendar-cell trip-cell muted" : "calendar-cell trip-cell"}>
-      <div className="cell-date"><strong>{date.getDate()}</strong></div>
-      <div className="cell-items trip-lines">
-        {trips.slice(0, 3).map((trip) => {
-          const isStart = iso === trip.startDate;
-          const isEnd = iso === trip.endDate;
-          return (
-            <button
-              key={`${trip.id}-${iso}`}
-              className={`trip-calendar-line ${isStart ? "starts" : ""} ${isEnd ? "ends" : ""}`}
-              onClick={() => { setActiveTripId(trip.id); setPage("itinerary"); }}
-              title={`${trip.name}: ${formatDateLabel(trip.startDate, { short: true })} – ${formatDateLabel(trip.endDate, { short: true })}`}
-            >
-              {isStart ? trip.name : ""}
-            </button>
-          );
-        })}
-        {trips.length > 3 && <span className="more-pill">+{trips.length - 3} more</span>}
-      </div>
-    </article>
-  );
+function IdeaCard({ idea, vote, edit }) {
+  return <article className="ideaCard" onClick={edit}><div className="ideaMain"><b>{idea.title}</b><span>{idea.date ? prettyDate(idea.date) : "Flexible"} · {timeLabel(idea.time, idea.period)}</span>{idea.notes && <p>{idea.notes}</p>}</div><div className="voteBox" onClick={(e) => e.stopPropagation()}><button onClick={() => vote(idea.id, 1)}>＋</button><strong>{idea.votes || 0}</strong><button onClick={() => vote(idea.id, -1)}>−</button></div></article>;
 }
 
-function IdeaCard({ idea, onEdit, onVote }) {
-  const category = getCategory(idea.category);
-  return (
-    <article className="idea-card" style={{ "--accent": category.accent }} onClick={onEdit}>
-      <div className="idea-topline">
-        <span className="category-badge">{category.emoji} {category.label}</span>
-        <button className="vote-button" onClick={(e) => { e.stopPropagation(); onVote(); }}>♡ {idea.votes}</button>
-      </div>
-      <h4>{idea.title}</h4>
-      {idea.notes && <p>{idea.notes}</p>}
-      <div className="card-footer">
-        {idea.date ? <span><CalendarDays size={14} /> {formatDateLabel(idea.date, { short: true })} {idea.time ? `• ${idea.time}` : idea.timeOfDay ? `• ${getTimeOfDayLabel(idea.timeOfDay)}` : ""}</span> : <span><Clock size={14} /> {idea.timeOfDay ? getTimeOfDayLabel(idea.timeOfDay) : "Click to schedule"}</span>}
-        {idea.link && <span><LinkIcon size={14} /> Link saved</span>}
-      </div>
-    </article>
-  );
+function ItineraryPage({ trip, editIdea }) {
+  const dates = daysBetween(trip.startDate, trip.endDate);
+  const scheduled = trip.ideas.filter((i) => i.scheduledDate).sort((a, b) => `${a.scheduledDate} ${a.scheduledTime || "99:99"}`.localeCompare(`${b.scheduledDate} ${b.scheduledTime || "99:99"}`));
+  return <section className="pageStack"><div className="sectionHead"><div><h2>Itinerary</h2><p>A clean timeline for everything scheduled.</p></div></div>{scheduled.length === 0 && <div className="emptyMini">Nothing scheduled yet. Add fixed dates or hit Auto Build.</div>}{dates.map((d) => { const items = scheduled.filter((i) => i.scheduledDate === d); if (!items.length) return null; return <section className="dayTimeline" key={d}><div className="dayHeader"><span>{prettyDate(d, { weekday: "long", month: "short", day: "numeric" })}</span><small>{items.length} plans</small></div>{items.map((item) => <button className="timelineItem" key={item.id} onClick={() => editIdea(item)}><div className="timeRail"><span>{timeLabel(item.scheduledTime, item.period)}</span><i /></div><div className="timelineCard"><div className="pill">{CATEGORY_EMOJIS[item.category]} {CATEGORY_LABELS[item.category]}</div><h3>{item.title}</h3><p>{item.notes || item.link || "Tap to add notes, link, or change time."}</p><div className="metaLine"><span><Vote size={13} /> {item.votes || 0} votes</span>{item.link && <span><LinkIcon size={13} /> Link saved</span>}</div></div></button>)}</section>; })}</section>;
 }
 
-function TimelineItem({ idea, onEdit }) {
-  const category = getCategory(idea.category);
-  return (
-    <button className="timeline-item" style={{ "--accent": category.accent }} onClick={onEdit}>
-      <div className="time-chip">{idea.time || getTimeOfDayLabel(idea.timeOfDay) || "Anytime"}</div>
-      <div>
-        <span>{category.emoji} {category.label}</span>
-        <strong>{idea.title}</strong>
-        {idea.notes && <p>{idea.notes}</p>}
-        {idea.link && <em><LinkIcon size={13} /> Link attached</em>}
-      </div>
-    </button>
-  );
+function CalendarPage({ trips, setActiveTripId, setPage }) {
+  const [cursor, setCursor] = useState(new Date());
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const first = new Date(year, month, 1);
+  const startOffset = first.getDay();
+  const cells = [];
+  for (let i = 0; i < 42; i++) cells.push(new Date(year, month, 1 - startOffset + i));
+  const monthLabel = cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  return <section className="pageStack"><div className="calendarTop"><button className="iconBtn" onClick={() => setCursor(new Date(year, month - 1, 1))}><ChevronLeft /></button><h2>{monthLabel}</h2><button className="iconBtn" onClick={() => setCursor(new Date(year, month + 1, 1))}><ChevronRight /></button></div><div className="realCalendar"><div className="weekday">Sun</div><div className="weekday">Mon</div><div className="weekday">Tue</div><div className="weekday">Wed</div><div className="weekday">Thu</div><div className="weekday">Fri</div><div className="weekday">Sat</div>{cells.map((date) => { const iso = date.toISOString().slice(0, 10); const dayTrips = trips.filter((t) => t.startDate <= iso && t.endDate >= iso); return <div key={iso} className={`calCell ${date.getMonth() !== month ? "muted" : ""}`}><span>{date.getDate()}</span>{dayTrips.slice(0, 2).map((t) => <button key={t.id} className="tripBar" onClick={() => { setActiveTripId(t.id); setPage("itinerary"); }}>{t.name}</button>)}</div>; })}</div></section>;
 }
 
-const styles = `
-:root { color: #f8fafc; background: #06101f; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: radial-gradient(circle at top left, rgba(56, 189, 248, .25), transparent 30rem), radial-gradient(circle at top right, rgba(236, 72, 153, .22), transparent 34rem), linear-gradient(135deg, #070d1a 0%, #0b1324 52%, #10172a 100%); }
-button, input, textarea, select { font: inherit; }
-.app-shell { min-height: 100vh; padding-bottom: 64px; }
-.hero { position: relative; overflow: hidden; padding: 24px; border-bottom: 1px solid rgba(255,255,255,.1); }
-.orb { position: absolute; border-radius: 999px; filter: blur(36px); opacity: .35; pointer-events: none; }
-.orb-one { width: 320px; height: 320px; background: #38bdf8; top: -140px; left: -120px; }
-.orb-two { width: 360px; height: 360px; background: #ec4899; right: -130px; bottom: -180px; }
-.topbar, .hero-content, .workspace { max-width: 1240px; margin: 0 auto; position: relative; z-index: 1; }
-.topbar { display: flex; align-items: center; gap: 14px; }
-.brand-left { display: flex; align-items: center; gap: 14px; min-width: 210px; }
-.brand-mark { width: 50px; height: 50px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, #ffffff, #bdd7ff); color: #0b1425; box-shadow: 0 18px 60px rgba(88,166,255,.35); }
-.topbar h1, .topbar p, .hero h2, .hero p { margin: 0; }
-.topbar h1 { font-size: 22px; letter-spacing: -.04em; }
-.eyebrow { color: #93a4bd; text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 900; }
-.top-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.desktop-nav-shell { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 7px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.07); border-radius: 999px; backdrop-filter: blur(18px); }
-.top-trip-select { width: auto; min-width: 165px; max-width: 230px; margin: 0; border-radius: 999px; padding: 9px 12px; font-size: 13px; font-weight: 900; background: rgba(2,6,23,.46); }
-.faux-select { color: white; border: 1px solid rgba(255,255,255,.12); cursor: pointer; text-align: left; }
-.nav-icon-button, .desktop-nav-item { height: 38px; border: 0; border-radius: 999px; background: transparent; color: #dbeafe; font-weight: 950; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; white-space: nowrap; }
-.nav-icon-button { width: 38px; padding: 0; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); }
-.desktop-nav-item.active { background: white; color: #0f172a; }
-.add-trip-item { background: rgba(251,146,60,.18); color: #fed7aa; border: 1px solid rgba(251,146,60,.34); }
-.mobile-top-actions { display: none; margin-left: auto; gap: 8px; }
-.mobile-bottom-nav { display: none; }
-.ghost-button, .icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: white; padding: 10px 14px; border-radius: 999px; cursor: pointer; font-weight: 850; }
-.hero-content { display: grid; grid-template-columns: 1fr 390px; gap: 32px; align-items: end; padding: 68px 0 30px; }
-.pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.1); padding: 9px 13px; border-radius: 999px; color: #dbeafe; font-weight: 900; font-size: 13px; }
-.hero h2 { margin-top: 18px; font-size: clamp(42px, 8vw, 76px); line-height: .92; letter-spacing: -.08em; max-width: 760px; }
-.hero-subtitle { max-width: 720px; color: #cbd5e1; font-size: 17px; line-height: 1.65; margin-top: 20px !important; }
-.hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-.hero-meta span { display: inline-flex; align-items: center; gap: 7px; padding: 10px 12px; border-radius: 999px; background: rgba(15,23,42,.64); border: 1px solid rgba(255,255,255,.1); color: #e2e8f0; font-size: 13px; }
-.hero-card, .panel, .modal, .empty-start { background: rgba(10, 18, 34, .76); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 80px rgba(0,0,0,.35); backdrop-filter: blur(22px); }
-.hero-card { border-radius: 32px; padding: 24px; }
-.hero-card p { color: #cbd5e1; font-weight: 900; }
-.trip-select { margin-top: 10px; }
-.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
-.stat-grid div { background: rgba(255,255,255,.07); border-radius: 20px; padding: 14px; }
-.stat-grid strong { display: block; font-size: 27px; letter-spacing: -.04em; }
-.stat-grid span { color: #94a3b8; font-size: 12px; font-weight: 800; }
-.workspace { padding: 24px; }
-.page-tabs { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
-.tab { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.11); background: rgba(255,255,255,.065); color: #dbeafe; border-radius: 999px; padding: 11px 14px; font-weight: 950; cursor: pointer; }
-.tab.active { background: white; color: #0f172a; }
-.panel, .empty-start { border-radius: 34px; padding: 22px; }
-.section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
-.section-heading h3, .empty-start h3 { margin: 4px 0 0; font-size: 28px; letter-spacing: -.05em; }
-.mini-count { color: #cbd5e1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); padding: 8px 11px; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: nowrap; }
-.add-form { display: grid; grid-template-columns: 1.2fr .75fr 1fr 1fr auto; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
-.add-form textarea { grid-column: 1 / 5; min-height: 58px; }
-.date-time-row { display: grid; grid-template-columns: 1.1fr .7fr 1fr; gap: 8px; }
-input, textarea, select { width: 100%; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: #f8fafc; border-radius: 16px; padding: 12px 13px; outline: none; }
-select option { background: #0f172a; color: white; }
-textarea { min-height: 86px; resize: vertical; }
-input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72); box-shadow: 0 0 0 4px rgba(59,130,246,.15); }
-.primary-button, .danger-button { border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 17px; padding: 12px 15px; font-weight: 950; cursor: pointer; }
-.primary-button { background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; box-shadow: 0 18px 40px rgba(59,130,246,.18); }
-.primary-button:disabled { opacity: .48; cursor: not-allowed; }
-.danger-button { background: rgba(239,68,68,.14); color: #fecaca; border: 1px solid rgba(239,68,68,.35); }
-.full { width: 100%; }
-.category-cloud { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
-.category-chip { border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.06); color: #e2e8f0; border-radius: 999px; padding: 9px 11px; cursor: pointer; font-size: 13px; font-weight: 900; }
-.category-chip span { color: #93c5fd; margin-left: 5px; }
-.category-chip.active { background: white; color: #0f172a; }
-.idea-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.idea-category-list { display: grid; gap: 22px; }
-.idea-category-section { display: grid; gap: 12px; }
-.idea-category-title { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
-.idea-category-title h4 { margin: 0; font-size: 20px; letter-spacing: -.045em; }
-.idea-category-title p { margin: 2px 0 0; color: #94a3b8; font-weight: 850; font-size: 12px; }
-.category-title-badge { width: 40px; height: 40px; border-radius: 16px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 22%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 18%, transparent); }
-.idea-card { border: 1px solid rgba(255,255,255,.12); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,255,255,.045)); border-radius: 24px; padding: 16px; cursor: pointer; position: relative; overflow: hidden; min-height: 160px; }
-.idea-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--accent); }
-.idea-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.24); transition: .18s ease; }
-.idea-topline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.category-badge { color: #e2e8f0; background: rgba(255,255,255,.08); padding: 7px 9px; border-radius: 999px; font-weight: 950; font-size: 12px; }
-.vote-button { border: 0; background: rgba(255,255,255,.1); color: white; border-radius: 999px; padding: 7px 10px; font-weight: 950; cursor: pointer; }
-.idea-card h4 { margin: 14px 0 6px; font-size: 18px; letter-spacing: -.03em; }
-.idea-card p { margin: 0; color: #cbd5e1; line-height: 1.45; font-size: 14px; }
-.card-footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; color: #94a3b8; font-size: 12px; font-weight: 850; }
-.card-footer span { display: inline-flex; align-items: center; gap: 5px; }
-.days-stack { display: grid; gap: 14px; }
-.day-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 27px; padding: 16px; }
-.day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.day-header p, .day-header h4 { margin: 0; }
-.day-header p { color: #93a4bd; font-weight: 950; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
-.day-header h4 { font-size: 21px; letter-spacing: -.04em; }
-.day-header span { color: #cbd5e1; font-size: 12px; font-weight: 950; padding: 8px 10px; border-radius: 999px; background: rgba(255,255,255,.08); }
-.empty-day, .empty-state { width: 100%; border: 1px dashed rgba(255,255,255,.18); background: rgba(255,255,255,.04); color: #94a3b8; border-radius: 20px; padding: 18px; text-align: center; }
-.empty-start { max-width: 720px; margin: 46px auto; text-align: center; padding: 42px; }
-.empty-start p:not(.eyebrow) { color: #cbd5e1; line-height: 1.6; }
-.empty-icon { width: 70px; height: 70px; border-radius: 26px; background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; display: grid; place-items: center; margin: 0 auto 16px; }
-.timeline { display: grid; gap: 10px; }
-.timeline-item { width: 100%; text-align: left; border: 1px solid rgba(255,255,255,.1); background: rgba(2,6,23,.36); border-radius: 20px; padding: 12px; display: grid; grid-template-columns: 92px 1fr; gap: 12px; color: white; cursor: pointer; }
-.timeline-item:hover { border-color: rgba(255,255,255,.24); }
-.time-chip { color: #0f172a; background: linear-gradient(135deg, #ffffff, #dbeafe); border-radius: 15px; display: grid; place-items: center; min-height: 56px; font-weight: 950; }
-.timeline-item span { color: var(--accent); font-weight: 950; font-size: 12px; }
-.timeline-item strong { display: block; margin-top: 3px; font-size: 16px; letter-spacing: -.03em; }
-.timeline-item p { color: #94a3b8; margin: 5px 0 0; font-size: 13px; line-height: 1.35; }
-.timeline-item em { color: #cbd5e1; font-style: normal; display: inline-flex; gap: 5px; align-items: center; margin-top: 8px; font-size: 12px; }
-.calendar-heading { align-items: flex-start; }
-.calendar-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.calendar-controls strong { min-width: 160px; text-align: center; }
-.mode-toggle { display: flex; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); padding: 4px; border-radius: 999px; }
-.mode-toggle button { border: 0; color: #dbeafe; background: transparent; border-radius: 999px; padding: 8px 11px; font-weight: 950; cursor: pointer; text-transform: capitalize; }
-.mode-toggle button.active { color: #0f172a; background: white; }
-.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-.calendar-grid.week .calendar-cell { min-height: 360px; }
-.calendar-cell { min-height: 150px; border-radius: 20px; padding: 10px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); overflow: hidden; }
-.calendar-cell.muted { opacity: .38; }
-.cell-date { display: flex; align-items: center; justify-content: space-between; color: #94a3b8; font-size: 12px; font-weight: 950; margin-bottom: 8px; }
-.cell-date strong { color: white; font-size: 17px; }
-.cell-items { display: grid; gap: 6px; }
-.mini-calendar-item { width: 100%; text-align: left; border: 1px solid rgba(255,255,255,.1); border-left: 4px solid var(--accent); background: rgba(2,6,23,.42); color: white; border-radius: 13px; padding: 8px; font-size: 12px; cursor: pointer; overflow: hidden; }
-.mini-calendar-item span { color: #bfdbfe; font-weight: 950; }
-.mini-calendar-item em { display: block; color: #94a3b8; font-style: normal; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.more-pill { color: #cbd5e1; font-size: 12px; font-weight: 950; padding: 6px 8px; background: rgba(255,255,255,.08); border-radius: 999px; display: inline-block; }
-.year-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.month-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 22px; padding: 16px; min-height: 190px; }
-.month-card h4 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
-.month-card p { margin: 6px 0 12px; color: #94a3b8; font-weight: 850; font-size: 13px; }
-.month-items { display: grid; gap: 7px; }
-.modal-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(2,6,23,.74); display: grid; place-items: center; padding: 20px; }
-.modal { width: min(580px, 100%); border-radius: 30px; padding: 24px; position: relative; max-height: 92vh; overflow: auto; }
-.modal h3 { margin: 4px 38px 18px 0; font-size: 28px; letter-spacing: -.05em; }
-.modal label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 13px; margin-bottom: 12px; }
-.close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: white; cursor: pointer; display: grid; place-items: center; }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.logistics-grid, .saved-logistics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.logistics-grid { margin-bottom: 18px; }
-.logistics-form, .logistics-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 26px; padding: 16px; display: grid; gap: 10px; }
-.form-title, .logistics-list h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; letter-spacing: -.03em; }
-.logistics-list { display: grid; gap: 12px; align-content: start; }
-.logistics-card label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 12px; margin: 0; }
-.modal-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
-
-.settings-modal .settings-section { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 22px; padding: 16px; margin-bottom: 14px; }
-.settings-section strong { display: block; margin-bottom: 5px; }
-.settings-section p, .profile-copy { color: #94a3b8; line-height: 1.55; margin: 0 0 12px; }
-.theme-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.theme-toggle button, .profile-row { border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.07); color: white; border-radius: 18px; padding: 12px; font-weight: 950; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.theme-toggle button.active { background: linear-gradient(135deg, #ffffff, #dbeafe); color: #0f172a; }
-.profile-row { width: 100%; justify-content: flex-start; text-align: left; }
-.profile-row span { display: grid; gap: 2px; flex: 1; }
-.profile-row em { color: #94a3b8; font-style: normal; font-size: 12px; }
-.profile-avatar { width: 78px; height: 78px; border-radius: 28px; background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; display: grid; place-items: center; margin-bottom: 14px; }
-.profile-preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
-.profile-preview-grid div { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 14px; display: grid; gap: 4px; }
-.profile-preview-grid strong { font-size: 22px; letter-spacing: -.04em; text-transform: capitalize; }
-.profile-preview-grid span { color: #94a3b8; font-size: 12px; font-weight: 900; }
-.light-mode { color: #0f172a; background: #f8fbff; }
-.light-mode body, body:has(.light-mode) { background: radial-gradient(circle at top left, rgba(125, 211, 252, .28), transparent 30rem), radial-gradient(circle at top right, rgba(251, 207, 232, .52), transparent 34rem), linear-gradient(135deg, #f8fbff 0%, #eff6ff 52%, #fdf2f8 100%); }
-.light-mode .hero-card, .light-mode .panel, .light-mode .modal, .light-mode .empty-start { background: rgba(255,255,255,.78); border-color: rgba(15,23,42,.1); box-shadow: 0 24px 80px rgba(15,23,42,.12); }
-.light-mode .hero-subtitle, .light-mode .hero-card p, .light-mode .empty-start p:not(.eyebrow), .light-mode .idea-card p, .light-mode .timeline-item p, .light-mode .settings-section p, .light-mode .profile-copy { color: #475569; }
-.light-mode .ghost-button, .light-mode .icon-button, .light-mode .category-chip, .light-mode .idea-card, .light-mode .day-card, .light-mode .logistics-form, .light-mode .logistics-card, .light-mode .calendar-cell, .light-mode .month-card, .light-mode .settings-modal .settings-section, .light-mode .profile-preview-grid div { background: rgba(255,255,255,.72); color: #0f172a; border-color: rgba(15,23,42,.1); }
-.light-mode input, .light-mode textarea, .light-mode select { background: rgba(255,255,255,.86); color: #0f172a; border-color: rgba(15,23,42,.12); }
-.light-mode select option { background: white; color: #0f172a; }
-.light-mode .category-badge, .light-mode .vote-button, .light-mode .hero-meta span, .light-mode .mini-count, .light-mode .day-header span, .light-mode .mode-toggle, .light-mode .profile-row, .light-mode .theme-toggle button { background: rgba(15,23,42,.06); color: #0f172a; border-color: rgba(15,23,42,.1); }
-.light-mode .category-chip.active, .light-mode .mode-toggle button.active { background: #0f172a; color: white; }
-.light-mode .cell-date strong, .light-mode .timeline-item, .light-mode .mini-calendar-item, .light-mode .close { color: #0f172a; }
-.light-mode .timeline-item, .light-mode .mini-calendar-item { background: rgba(255,255,255,.82); border-color: rgba(15,23,42,.1); }
-.light-mode .empty-day, .light-mode .empty-state { color: #64748b; border-color: rgba(15,23,42,.16); background: rgba(255,255,255,.52); }
-.light-mode .topbar h1, .light-mode .hero h2, .light-mode .day-header h4, .light-mode .section-heading h3, .light-mode .modal h3 { color: #0f172a; }
-
-.mobile-bottom-nav { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 30; grid-template-columns: 1fr 1fr 76px 1fr 1fr; align-items: center; gap: 4px; padding: 10px; border-radius: 28px; background: rgba(10,18,34,.9); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 22px 70px rgba(0,0,0,.42); backdrop-filter: blur(22px); }
-.mobile-nav-button { height: 54px; border: 0; border-radius: 18px; background: transparent; color: #94a3b8; display: grid; place-items: center; align-content: center; gap: 4px; font-size: 10px; font-weight: 950; cursor: pointer; }
-.mobile-nav-button.active { color: #0f172a; background: linear-gradient(135deg, #ffffff, #dbeafe); }
-.mobile-nav-add { width: 64px; height: 64px; margin: -28px auto 0; border: 0; border-radius: 24px; background: linear-gradient(135deg, #fb923c, #f97316); color: white; display: grid; place-items: center; box-shadow: 0 18px 40px rgba(249,115,22,.42); cursor: pointer; }
-.light-mode .desktop-nav-shell, .light-mode .mobile-bottom-nav { background: rgba(255,255,255,.82); border-color: rgba(15,23,42,.1); box-shadow: 0 22px 70px rgba(15,23,42,.14); }
-.light-mode .top-trip-select { background: rgba(255,255,255,.92); color: #0f172a; }
-.light-mode .desktop-nav-item, .light-mode .nav-icon-button { color: #334155; }
-.light-mode .desktop-nav-item.active { background: #0f172a; color: white; }
-.light-mode .add-trip-item { background: rgba(249,115,22,.14); color: #9a3412; border-color: rgba(249,115,22,.24); }
-.light-mode .mobile-nav-button { color: #64748b; }
-.light-mode .mobile-nav-button.active { background: #0f172a; color: white; }
-
-
-.logistics-filter-tabs { display: inline-flex; gap: 8px; padding: 6px; margin: 0 0 16px; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); }
-.logistics-filter-tabs button { border: 0; background: transparent; color: #cbd5e1; border-radius: 999px; padding: 9px 14px; font-weight: 900; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.logistics-filter-tabs button.active { background: linear-gradient(135deg, #fb923c, #f97316); color: #111827; box-shadow: 0 14px 28px rgba(249,115,22,.22); }
-.month-only-controls { min-width: 0; }
-.calendar-month-shell { display: grid; gap: 10px; }
-.calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; color: #94a3b8; font-size: 11px; font-weight: 950; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
-.trip-calendar-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.trip-cell { min-height: 116px; padding: 10px; }
-.trip-cell .cell-date { margin-bottom: 8px; }
-.trip-cell .cell-date strong { font-size: 14px; }
-.trip-lines { gap: 5px; }
-.trip-calendar-line { width: 100%; min-height: 23px; border: 0; color: #111827; background: linear-gradient(135deg, #fbbf24, #fb923c); border-radius: 999px; padding: 5px 8px; text-align: left; font-size: 11px; font-weight: 950; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; box-shadow: 0 8px 18px rgba(251,146,60,.18); }
-.trip-calendar-line:not(.starts) { color: transparent; }
-.trip-calendar-line.starts { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
-.trip-calendar-line.ends { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
-.light-mode .logistics-filter-tabs { background: rgba(255,255,255,.72); border-color: rgba(15,23,42,.1); }
-.light-mode .logistics-filter-tabs button { color: #475569; }
-
-@media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .logistics-grid, .saved-logistics { grid-template-columns: 1fr; } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) {
-  .app-shell { padding-bottom: 120px; }
-  .hero { padding: 16px 14px 10px; }
-  .workspace { padding: 14px 14px calc(150px + env(safe-area-inset-bottom)); }
-  .topbar { align-items: center; padding-top: 4px; gap: 10px; }
-  .brand-left { min-width: 0; gap: 10px; }
-  .brand-left h1 { font-size: 20px; }
-  .brand-left .eyebrow { display: none; }
-  .brand-mark { width: 42px; height: 42px; border-radius: 16px; }
-  .desktop-nav-shell, .top-actions, .page-tabs { display: none !important; }
-  .mobile-top-actions { display: flex; gap: 8px; }
-  .mobile-top-actions .ghost-button { padding: 10px 12px; border-radius: 16px; font-size: 12px; }
-  .mobile-bottom-nav { display: grid; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); padding: 8px; border-radius: 26px; }
-  .mobile-nav-button { height: 52px; border-radius: 18px; }
-  .mobile-nav-add { width: 62px; height: 62px; border-radius: 23px; }
-  .hero-content { padding: 26px 0 12px; gap: 16px; }
-  .hero h2 { font-size: 34px; line-height: .96; }
-  .hero-subtitle { font-size: 14px; line-height: 1.5; }
-  .hero-meta { gap: 8px; }
-  .hero-meta span { width: 100%; justify-content: flex-start; }
-  .hero-card, .panel { border-radius: 28px; padding: 16px; }
-  .panel { box-shadow: 0 18px 55px rgba(0,0,0,.22); }
-  .section-heading { align-items: flex-start; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-  .section-heading h3 { font-size: 28px; }
-  .add-form { grid-template-columns: 1fr; gap: 12px; padding: 14px; border-radius: 24px; background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.10); margin-bottom: 18px; }
-  .add-form textarea { grid-column: auto; min-height: 88px; }
-  input, select, textarea { min-height: 48px; border-radius: 17px; font-size: 15px; }
-  .primary-button, .ghost-button, .danger-button { min-height: 48px; justify-content: center; }
-  .category-cloud { display: flex; gap: 9px; overflow-x: auto; padding: 2px 2px 12px; margin: 0 -2px 4px; scroll-snap-type: x proximity; }
-  .category-cloud::-webkit-scrollbar { display: none; }
-  .category-chip { flex: 0 0 auto; scroll-snap-align: start; }
-  .idea-category-list { gap: 26px; }
-  .idea-category-section { gap: 12px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); }
-  .light-mode .idea-category-section { background: rgba(255,255,255,.70); border-color: rgba(15,23,42,.08); }
-  .idea-category-title { padding: 0; }
-  .idea-category-title h4 { font-size: 22px; }
-  .category-title-badge { width: 42px; height: 42px; border-radius: 16px; }
-  .add-form, .two-col, .three-col, .date-time-row, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; }
-  .idea-grid { gap: 12px; }
-  .idea-card { border-radius: 22px; padding: 14px; }
-  .idea-card h4 { font-size: 18px; }
-  .day-card, .logistics-form, .logistics-card, .calendar-cell, .month-card { border-radius: 24px; }
-  .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; }
-  .calendar-controls { justify-content: flex-start; }
-  .modal-backdrop { align-items: end; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
-  .modal { border-radius: 28px 28px 20px 20px; width: 100%; max-height: calc(100vh - 32px); padding: 22px 18px calc(110px + env(safe-area-inset-bottom)); }
-  .modal-actions { position: sticky; bottom: 0; padding-top: 12px; background: linear-gradient(to top, rgba(15,23,42,.98), rgba(15,23,42,.74), transparent); flex-direction: column-reverse; }
-  .light-mode .modal-actions { background: linear-gradient(to top, rgba(255,255,255,.98), rgba(255,255,255,.82), transparent); }
+function LogisticsPage({ trip, mutateTrip }) {
+  const [tab, setTab] = useState("hotels");
+  const [expandedTraveler, setExpandedTraveler] = useState(null);
+  function addHotel() { mutateTrip((t) => ({ ...t, hotels: [...(t.hotels || []), { id: uid(), name: "", address: "", checkInDate: "", checkInTime: "", checkOutDate: "", checkOutTime: "", confirmation: "", notes: "" }] })); }
+  function updateHotel(id, patch) { mutateTrip((t) => ({ ...t, hotels: t.hotels.map((h) => h.id === id ? { ...h, ...patch } : h) })); }
+  function deleteHotel(id) { mutateTrip((t) => ({ ...t, hotels: t.hotels.filter((h) => h.id !== id) })); }
+  function addTraveler() { const tr = { id: uid(), name: "New Traveler", flights: [] }; mutateTrip((t) => ({ ...t, travelers: [...(t.travelers || []), tr] })); setExpandedTraveler(tr.id); }
+  function updateTraveler(id, patch) { mutateTrip((t) => ({ ...t, travelers: t.travelers.map((tr) => tr.id === id ? { ...tr, ...patch } : tr) })); }
+  function deleteTraveler(id) { mutateTrip((t) => ({ ...t, travelers: t.travelers.filter((tr) => tr.id !== id) })); }
+  function addFlight(travelerId) { updateTraveler(travelerId, { flights: [...((trip.travelers.find((tr) => tr.id === travelerId)?.flights) || []), { id: uid(), airline: "", flightNumber: "", from: "", to: "", departDate: "", departTime: "", arriveDate: "", arriveTime: "", confirmation: "", seat: "", notes: "" }] }); }
+  function updateFlight(travelerId, flightId, patch) { const traveler = trip.travelers.find((tr) => tr.id === travelerId); updateTraveler(travelerId, { flights: traveler.flights.map((f) => f.id === flightId ? { ...f, ...patch } : f) }); }
+  return <section className="pageStack"><div className="sectionHead"><div><h2>Logistics</h2><p>Hotels and flights, organized by what you need.</p></div></div><div className="segmented"><button className={tab === "hotels" ? "active" : ""} onClick={() => setTab("hotels")}><Hotel size={16} /> Hotels</button><button className={tab === "flights" ? "active" : ""} onClick={() => setTab("flights")}><Plane size={16} /> Flights</button></div>{tab === "hotels" ? <div className="logisticsStack"><button className="primaryBtn full" onClick={addHotel}><Plus size={17} /> Add Hotel</button>{(trip.hotels || []).map((h) => <HotelCard key={h.id} hotel={h} update={(p) => updateHotel(h.id, p)} del={() => deleteHotel(h.id)} />)}</div> : <div className="logisticsStack"><button className="primaryBtn full" onClick={addTraveler}><Plus size={17} /> Add Traveler</button>{(trip.travelers || []).map((tr) => <TravelerCard key={tr.id} traveler={tr} expanded={expandedTraveler === tr.id} setExpanded={() => setExpandedTraveler(expandedTraveler === tr.id ? null : tr.id)} update={(p) => updateTraveler(tr.id, p)} del={() => deleteTraveler(tr.id)} addFlight={() => addFlight(tr.id)} updateFlight={(flightId, p) => updateFlight(tr.id, flightId, p)} />)}</div>}</section>;
 }
+function HotelCard({ hotel, update, del }) { return <div className="logCard"><div className="cardTop"><input placeholder="Hotel name" value={hotel.name} onChange={(e) => update({ name: e.target.value })} /><button className="iconBtn danger" onClick={del}><Trash2 size={16} /></button></div><input placeholder="Address" value={hotel.address} onChange={(e) => update({ address: e.target.value })} /><div className="split2"><input type="date" value={hotel.checkInDate} onChange={(e) => update({ checkInDate: e.target.value })} /><input type="time" value={hotel.checkInTime} onChange={(e) => update({ checkInTime: e.target.value })} /></div><div className="split2"><input type="date" value={hotel.checkOutDate} onChange={(e) => update({ checkOutDate: e.target.value })} /><input type="time" value={hotel.checkOutTime} onChange={(e) => update({ checkOutTime: e.target.value })} /></div><input placeholder="Confirmation number" value={hotel.confirmation} onChange={(e) => update({ confirmation: e.target.value })} /><textarea placeholder="Notes" value={hotel.notes} onChange={(e) => update({ notes: e.target.value })} /></div>; }
+function TravelerCard({ traveler, expanded, setExpanded, update, del, addFlight, updateFlight }) { return <div className="travelerCard"><div className="travelerSummary" onClick={setExpanded}><div><input onClick={(e) => e.stopPropagation()} value={traveler.name} onChange={(e) => update({ name: e.target.value })} /><small>{traveler.flights.length} flight{traveler.flights.length === 1 ? "" : "s"}</small></div><button className="ghostBtn small">{expanded ? "Close" : "Open"}</button></div>{expanded && <div className="flightDrawer"><button className="primaryBtn full" onClick={addFlight}><Plus size={16} /> Add Flight Leg</button>{traveler.flights.map((f) => <FlightLeg key={f.id} flight={f} update={(p) => updateFlight(f.id, p)} />)}<button className="textDanger" onClick={del}>Delete traveler</button></div>}</div>; }
+function FlightLeg({ flight, update }) { return <div className="flightLeg"><div className="split2"><input placeholder="Airline" value={flight.airline} onChange={(e) => update({ airline: e.target.value })} /><input placeholder="Flight #" value={flight.flightNumber} onChange={(e) => update({ flightNumber: e.target.value })} /></div><div className="split2"><input placeholder="From" value={flight.from} onChange={(e) => update({ from: e.target.value })} /><input placeholder="To" value={flight.to} onChange={(e) => update({ to: e.target.value })} /></div><div className="split2"><input type="date" value={flight.departDate} onChange={(e) => update({ departDate: e.target.value })} /><input type="time" value={flight.departTime} onChange={(e) => update({ departTime: e.target.value })} /></div><div className="split2"><input placeholder="Conf #" value={flight.confirmation} onChange={(e) => update({ confirmation: e.target.value })} /><input placeholder="Seat" value={flight.seat} onChange={(e) => update({ seat: e.target.value })} /></div></div>; }
+
+function MobileBottomNav({ page, setPage, addTrip }) { const item = (id, label, Icon) => <button className={page === id ? "active" : ""} onClick={() => setPage(id)}><Icon size={19} /><span>{label}</span></button>; return <nav className="mobileNav">{item("planning", "Planning", ListTodo)}{item("logistics", "Logistics", ClipboardList)}<button className="addRound" onClick={addTrip}><Plus size={28} /></button>{item("itinerary", "Itinerary", CalendarRange)}{item("calendar", "Calendar", CalendarDays)}</nav>; }
+
+function TripEditor({ trip, save, deleteTrip, close }) { const [draft, setDraft] = useState({ name: trip.name, location: trip.location, startDate: trip.startDate, endDate: trip.endDate }); return <Modal close={close}><h2>Edit Trip</h2><input placeholder="Trip name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /><input placeholder="Location" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} /><div className="split2"><input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /><input type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} /></div><button className="primaryBtn full" onClick={() => { save(draft); close(); }}>Save Trip</button><button className="textDanger" onClick={() => { deleteTrip(); close(); }}>Delete Trip</button></Modal>; }
+function IdeaEditor({ idea, trip, mutateTrip, close }) { const [draft, setDraft] = useState(idea); const dates = daysBetween(trip.startDate, trip.endDate); function save() { mutateTrip((t) => ({ ...t, ideas: t.ideas.map((i) => i.id === idea.id ? { ...draft, scheduledDate: draft.scheduledDate || draft.date, scheduledTime: draft.scheduledTime || draft.time || PERIOD_TIMES[draft.period] || "" } : i) })); close(); } function del() { mutateTrip((t) => ({ ...t, ideas: t.ideas.filter((i) => i.id !== idea.id) })); close(); } return <Modal close={close}><h2>Edit Plan</h2><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>{CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</select><input placeholder="Link" value={draft.link || ""} onChange={(e) => setDraft({ ...draft, link: e.target.value })} /><textarea placeholder="Notes" value={draft.notes || ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /><select value={draft.scheduledDate || draft.date || ""} onChange={(e) => setDraft({ ...draft, scheduledDate: e.target.value, date: e.target.value })}><option value="">Unscheduled</option>{dates.map((d) => <option key={d} value={d}>{prettyDate(d)}</option>)}</select><div className="split2"><select value={draft.period || ""} onChange={(e) => setDraft({ ...draft, period: e.target.value, scheduledTime: PERIOD_TIMES[e.target.value] || "", time: "" })}><option value="">Flexible</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option></select><input type="time" value={draft.scheduledTime || draft.time || ""} onChange={(e) => setDraft({ ...draft, scheduledTime: e.target.value, time: e.target.value, period: "" })} /></div><button className="primaryBtn full" onClick={save}>Save Plan</button><button className="textDanger" onClick={del}>Delete Plan</button></Modal>; }
+function SettingsModal({ theme, setTheme, close }) { return <Modal close={close}><h2>Settings</h2><div className="segmented"><button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button><button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button></div><div className="profileBox"><User /><div><b>Profile</b><p>Your public profile, followers, saved trips, and groups will live here later.</p></div></div></Modal>; }
+function Modal({ children, close }) { return <div className="modalBackdrop" onMouseDown={close}><div className="modal" onMouseDown={(e) => e.stopPropagation()}><button className="closeBtn" onClick={close}><X /></button>{children}</div></div>; }
+function defaultTimeForCategory(category) { return category === "breakfast" ? "09:30" : category === "lunch" ? "12:30" : category === "dinner" ? "19:30" : category === "drinks" ? "21:00" : "14:00"; }
+
+const css = `
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer}.app{min-height:100vh;color:var(--text);background:radial-gradient(circle at top left,var(--glow),transparent 38%),linear-gradient(135deg,var(--bg1),var(--bg2));padding-bottom:108px}.dark{--bg1:#09111f;--bg2:#18243a;--panel:rgba(255,255,255,.08);--panel2:rgba(255,255,255,.12);--text:#f8fafc;--muted:#a8b3c7;--line:rgba(255,255,255,.14);--input:rgba(255,255,255,.1);--glow:rgba(249,115,22,.28);--chip:rgba(255,255,255,.1)}.light{--bg1:#f9efe6;--bg2:#eaf3ff;--panel:rgba(255,255,255,.74);--panel2:#fff;--text:#172033;--muted:#607089;--line:rgba(27,37,59,.12);--input:rgba(255,255,255,.82);--glow:rgba(249,115,22,.18);--chip:#f2f5fa}.shell{width:min(1120px,100%);margin:0 auto;padding:18px}.desktopTop{display:none}.mobileHero{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:14px 2px 10px}.eyebrow{color:#fb923c;text-transform:uppercase;font-weight:900;font-size:11px;letter-spacing:.14em}.mobileHero h1{font-size:30px;line-height:1;margin:4px 0 7px}.mobileHero p{margin:0;color:var(--muted);font-size:13px}.controlStrip{position:sticky;top:8px;z-index:5;display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin:8px 0 18px;padding:10px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 78%,transparent);backdrop-filter:blur(18px);border-radius:22px;box-shadow:0 12px 35px rgba(0,0,0,.14)}.tripMini{min-width:0}.tripMini span{display:block;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tripMini small{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.primaryBtn,.orangeBtn{border:0;border-radius:999px;background:linear-gradient(135deg,#fb923c,#f97316);color:#fff;font-weight:900;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;box-shadow:0 12px 24px rgba(249,115,22,.24)}.ghostBtn,.iconBtn{border:1px solid var(--line);background:var(--chip);color:var(--text);border-radius:999px;padding:10px 12px;display:inline-flex;align-items:center;justify-content:center;gap:7px}.small{font-size:12px;padding:8px 10px}.big{font-size:16px;padding:14px 18px}.full{width:100%}.pageStack{display:flex;flex-direction:column;gap:16px}.sectionHead h2{font-size:24px;margin:0 0 5px}.sectionHead p{margin:0;color:var(--muted);font-size:14px}.addCard,.categoryBlock,.logCard,.travelerCard,.dayTimeline,.empty,.emptyMini{border:1px solid var(--line);background:var(--panel);border-radius:28px;padding:16px;box-shadow:0 18px 45px rgba(0,0,0,.13);backdrop-filter:blur(18px)}.formGrid{display:grid;gap:10px;margin-bottom:12px}input,select,textarea{width:100%;border:1px solid var(--line);background:var(--input);color:var(--text);border-radius:17px;padding:12px 13px;outline:none}textarea{min-height:84px;resize:vertical}.split2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.categoryStack{display:flex;flex-direction:column;gap:18px}.categoryTitle{display:flex;align-items:center;gap:9px;margin-bottom:12px}.categoryTitle span{font-size:21px}.categoryTitle b{font-size:18px}.categoryTitle small{margin-left:auto;color:var(--muted);font-weight:800}.softEmpty{border:1px dashed var(--line);border-radius:20px;padding:18px;text-align:center;color:var(--muted)}.ideaCard{border:1px solid var(--line);background:var(--panel2);border-radius:22px;padding:13px;display:flex;gap:12px;align-items:center;margin-top:10px;text-align:left;color:var(--text);width:100%}.ideaMain{flex:1;min-width:0}.ideaMain b{display:block;font-size:15px}.ideaMain span,.ideaMain p{display:block;color:var(--muted);font-size:12px;margin:4px 0 0}.voteBox{display:grid;grid-template-columns:28px;justify-items:center;gap:3px}.voteBox button{border:0;background:var(--chip);color:var(--text);width:28px;height:25px;border-radius:10px}.dayHeader{display:flex;justify-content:space-between;align-items:end;margin-bottom:13px}.dayHeader span{font-size:18px;font-weight:950}.dayHeader small{color:var(--muted)}.timelineItem{width:100%;display:grid;grid-template-columns:74px 1fr;gap:10px;border:0;background:transparent;color:var(--text);text-align:left;padding:0;margin:0 0 12px}.timeRail{display:flex;flex-direction:column;align-items:flex-end;gap:8px;color:#fb923c;font-size:12px;font-weight:900;padding-top:10px}.timeRail i{width:2px;flex:1;min-height:58px;background:linear-gradient(#fb923c,transparent);border-radius:999px}.timelineCard{background:var(--panel2);border:1px solid var(--line);border-radius:24px;padding:14px}.pill{display:inline-flex;background:var(--chip);border-radius:999px;padding:5px 9px;color:var(--muted);font-size:11px;font-weight:900}.timelineCard h3{margin:9px 0 5px;font-size:17px}.timelineCard p{margin:0;color:var(--muted);font-size:13px;line-height:1.35}.metaLine{display:flex;gap:11px;margin-top:11px;color:var(--muted);font-size:12px}.metaLine span{display:flex;align-items:center;gap:4px}.calendarTop{display:flex;align-items:center;justify-content:space-between}.calendarTop h2{margin:0}.realCalendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.weekday{font-size:11px;color:var(--muted);text-align:center;font-weight:900}.calCell{min-height:82px;border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:7px;overflow:hidden}.calCell>span{font-size:12px;color:var(--muted);font-weight:900}.calCell.muted{opacity:.42}.tripBar{width:100%;border:0;background:linear-gradient(135deg,#fb923c,#ec4899);color:white;border-radius:999px;padding:4px 6px;font-size:10px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.segmented{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);padding:5px;border-radius:999px;gap:5px}.segmented button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:900;padding:10px;display:flex;align-items:center;justify-content:center;gap:7px}.segmented button.active{background:var(--panel2);color:var(--text);box-shadow:0 8px 20px rgba(0,0,0,.1)}.logisticsStack{display:flex;flex-direction:column;gap:13px}.cardTop{display:grid;grid-template-columns:1fr auto;gap:8px}.danger{color:#fb7185}.travelerSummary{display:flex;justify-content:space-between;align-items:center;gap:10px}.travelerSummary input{border:0;background:transparent;padding:0;font-weight:950;font-size:18px}.travelerSummary small{color:var(--muted)}.flightDrawer{margin-top:14px;display:grid;gap:12px}.flightLeg{border:1px solid var(--line);background:var(--panel2);border-radius:22px;padding:12px;display:grid;gap:10px}.textDanger{border:0;background:transparent;color:#fb7185;font-weight:900;padding:10px}.empty{text-align:center;padding:42px 20px}.emptyIcon{font-size:44px}.empty h2{font-size:28px;margin:9px 0}.empty p{color:var(--muted);max-width:430px;margin:0 auto 20px}.emptyMini{text-align:center;color:var(--muted)}.mobileNav{position:fixed;left:12px;right:12px;bottom:14px;z-index:30;height:76px;display:grid;grid-template-columns:1fr 1fr 70px 1fr 1fr;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 86%,transparent);backdrop-filter:blur(22px);border-radius:28px;box-shadow:0 18px 50px rgba(0,0,0,.25)}.mobileNav button{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:900}.mobileNav button.active{color:var(--text)}.mobileNav .addRound{width:58px;height:58px;border-radius:22px;background:linear-gradient(135deg,#fb923c,#f97316);color:white;justify-self:center;box-shadow:0 12px 25px rgba(249,115,22,.33)}.modalBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:end center;z-index:60;padding:14px}.modal{width:min(560px,100%);max-height:86vh;overflow:auto;background:var(--bg1);border:1px solid var(--line);border-radius:30px;padding:20px;display:grid;gap:12px;color:var(--text);box-shadow:0 30px 80px rgba(0,0,0,.35)}.closeBtn{justify-self:end;border:0;background:var(--chip);color:var(--text);border-radius:999px;width:36px;height:36px}.modal h2{margin:0}.profileBox{display:flex;gap:12px;border:1px solid var(--line);border-radius:22px;padding:14px;background:var(--panel)}.profileBox p{margin:4px 0 0;color:var(--muted)}
+@media (min-width: 820px){.app{padding-bottom:40px}.desktopTop{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:14px 22px;background:color-mix(in srgb,var(--panel2) 80%,transparent);backdrop-filter:blur(22px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.brand small{display:block;color:var(--muted);font-size:11px}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,#fb923c,#ec4899)}.tripSelect{width:190px}.desktopNav{display:flex;gap:6px;background:var(--chip);border-radius:999px;padding:5px}.desktopNav button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:900;padding:9px 12px}.desktopNav button.active{background:var(--panel2);color:var(--text)}.mobileHero,.mobileNav{display:none}.shell{padding:28px}.controlStrip{top:80px}.categoryStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.formGrid{grid-template-columns:1.3fr .8fr 1fr 1fr}.pageStack{gap:20px}.realCalendar{gap:8px}.calCell{min-height:122px;border-radius:20px}.timelineItem{grid-template-columns:110px 1fr}.timelineCard h3{font-size:20px}.logisticsStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.modalBackdrop{place-items:center}}
+@media (max-width: 430px){.shell{padding:14px}.controlStrip{grid-template-columns:1fr auto;}.controlStrip .primaryBtn{grid-column:1/-1}.ghostBtn{padding:9px 10px}.split2{grid-template-columns:1fr}.calCell{min-height:70px;padding:5px;border-radius:12px}.tripBar{font-size:9px}.mobileHero h1{font-size:27px}}
 `;
