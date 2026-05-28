@@ -228,50 +228,128 @@ const dbFlightToApp = (flight) => ({
   notes: flight.notes || "",
 });
 
+async function ensureTripMembership(tripId, userId, role = "owner") {
+  if (!tripId || !userId) return;
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("trip_members")
+    .select("trip_id")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (lookupError) throw lookupError;
+  if (existing) return;
+
+  const { error: insertError } = await supabase
+    .from("trip_members")
+    .insert({ trip_id: tripId, user_id: userId, role });
+
+  if (insertError) throw insertError;
+}
+
 async function saveTripDeepToSupabase(trip, userId) {
   if (!userId || !trip?.id) return;
-  await supabase.from("trips").upsert(appTripToDbTrip(trip, userId));
+
+  const { error: tripError } = await supabase
+    .from("trips")
+    .upsert(appTripToDbTrip(trip, userId), { onConflict: "id" });
+  if (tripError) throw tripError;
+
+  // Critical persistence fix: the app loads trips through trip_members, so every
+  // newly-created owner trip must also have a trip_members row. Without this,
+  // the trip exists in Supabase but disappears from the app after refresh/login.
+  await ensureTripMembership(trip.id, userId, "owner");
 
   if (Array.isArray(trip.ideas)) {
     const rows = trip.ideas.map((idea) => appIdeaToDb(idea, trip.id, userId));
-    if (rows.length) await supabase.from("planning_items").upsert(rows);
+    if (rows.length) {
+      const { error } = await supabase.from("planning_items").upsert(rows, { onConflict: "id" });
+      if (error) throw error;
+    }
   }
 
   if (Array.isArray(trip.hotels)) {
     const rows = trip.hotels.map((hotel) => appHotelToDb(hotel, trip.id));
-    if (rows.length) await supabase.from("hotels").upsert(rows);
+    if (rows.length) {
+      const { error } = await supabase.from("hotels").upsert(rows, { onConflict: "id" });
+      if (error) throw error;
+    }
   }
 
   if (Array.isArray(trip.travelers)) {
     const travelerRows = trip.travelers.map((traveler) => appTravelerToDb(traveler, trip.id));
-    if (travelerRows.length) await supabase.from("travelers").upsert(travelerRows);
+    if (travelerRows.length) {
+      const { error } = await supabase.from("travelers").upsert(travelerRows, { onConflict: "id" });
+      if (error) throw error;
+    }
 
     const flightRows = trip.travelers.flatMap((traveler) => (traveler.flights || []).map((flight) => appFlightToDb(flight, traveler.id)));
-    if (flightRows.length) await supabase.from("flights").upsert(flightRows);
+    if (flightRows.length) {
+      const { error } = await supabase.from("flights").upsert(flightRows, { onConflict: "id" });
+      if (error) throw error;
+    }
   }
 }
 
 async function loadTripsFromSupabase(userId) {
   if (!userId) return [];
 
-  const { data: memberRows, error: memberError } = await supabase
+  // Load shared trips through trip_members without relying on embedded FK joins.
+  // This avoids "could not find relationship" errors and makes refreshes safer.
+  const { data: memberRows = [], error: memberError } = await supabase
     .from("trip_members")
-    .select("role, trips(*)")
+    .select("trip_id,user_id,role")
     .eq("user_id", userId);
 
   if (memberError) throw memberError;
 
-  const trips = (memberRows || []).map((row) => dbTripToAppTrip(row.trips)).filter(Boolean);
+  const memberTripIds = (memberRows || []).map((row) => row.trip_id).filter(Boolean);
+
+  // Also load trips the user owns directly. This repairs older trips that were
+  // created before the trip_members persistence fix existed.
+  const [{ data: memberTrips = [], error: memberTripsError }, { data: ownedTrips = [], error: ownedTripsError }] = await Promise.all([
+    memberTripIds.length
+      ? supabase.from("trips").select("*").in("id", memberTripIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from("trips").select("*").eq("owner_id", userId),
+  ]);
+
+  if (memberTripsError) throw memberTripsError;
+  if (ownedTripsError) throw ownedTripsError;
+
+  const tripMap = new Map();
+  [...memberTrips, ...ownedTrips].forEach((trip) => {
+    if (trip?.id) tripMap.set(trip.id, trip);
+  });
+
+  for (const owned of ownedTrips || []) {
+    if (owned?.id && !memberTripIds.includes(owned.id)) {
+      try { await ensureTripMembership(owned.id, userId, "owner"); } catch (err) { console.warn("Could not repair trip membership", err); }
+    }
+  }
+
+  const trips = Array.from(tripMap.values()).map(dbTripToAppTrip).filter(Boolean);
   const tripIds = trips.map((trip) => trip.id);
   if (!tripIds.length) return [];
 
-  const [{ data: items = [] }, { data: hotels = [] }, { data: travelers = [] }, { data: flights = [] }, { data: members = [] }] = await Promise.all([
+  const [{ data: items = [], error: itemsError }, { data: hotels = [], error: hotelsError }, { data: travelers = [], error: travelersError }, { data: members = [], error: membersError }] = await Promise.all([
     supabase.from("planning_items").select("*").in("trip_id", tripIds),
     supabase.from("hotels").select("*").in("trip_id", tripIds),
     supabase.from("travelers").select("*").in("trip_id", tripIds),
-    supabase.from("flights").select("*"),
     supabase.from("trip_members").select("trip_id,user_id,role").in("trip_id", tripIds),
   ]);
+
+  if (itemsError) throw itemsError;
+  if (hotelsError) throw hotelsError;
+  if (travelersError) throw travelersError;
+  if (membersError) throw membersError;
+
+  const travelerIds = (travelers || []).map((traveler) => traveler.id).filter(Boolean);
+  const { data: flights = [], error: flightsError } = travelerIds.length
+    ? await supabase.from("flights").select("*").in("traveler_id", travelerIds)
+    : { data: [], error: null };
+  if (flightsError) throw flightsError;
 
   const itemIds = items.map((item) => item.id);
   let voteRows = [];
@@ -402,14 +480,26 @@ export default function App() {
     const current = trips.find((t) => t.id === id);
     const updated = current ? { ...current, ...patch } : null;
     setTrips((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-    if (user && updated) await saveTripDeepToSupabase(updated, user.id);
+    if (user && updated) {
+      try {
+        await saveTripDeepToSupabase(updated, user.id);
+      } catch (err) {
+        console.error(err);
+        setAppNotice(err.message || "Could not save trip.");
+      }
+    }
   }
   function mutateActiveTrip(fn) {
     if (!activeTrip) return;
     setTrips((prev) => {
       const updatedTrips = prev.map((t) => (t.id === activeTrip.id ? fn(t) : t));
       const updated = updatedTrips.find((t) => t.id === activeTrip.id);
-      if (user && updated) saveTripDeepToSupabase(updated, user.id);
+      if (user && updated) {
+        saveTripDeepToSupabase(updated, user.id).catch((err) => {
+          console.error(err);
+          setAppNotice(err.message || "Could not save latest change.");
+        });
+      }
       return updatedTrips;
     });
   }
@@ -423,12 +513,21 @@ export default function App() {
     setActiveTripId(t.id);
     setPage("planning");
     setTripEditorOpen(true);
-    await saveTripDeepToSupabase(t, user.id);
+    try {
+      await saveTripDeepToSupabase(t, user.id);
+      await refreshTripsFromSupabase();
+    } catch (err) {
+      console.error(err);
+      setAppNotice(err.message || "Could not save new trip.");
+    }
   }
   async function deleteTrip(id) {
     setTrips((prev) => prev.filter((t) => t.id !== id));
     if (activeTripId === id) setActiveTripId(trips.find((t) => t.id !== id)?.id || null);
-    if (user) await supabase.from("trips").delete().eq("id", id).eq("owner_id", user.id);
+    if (user) {
+      const { error } = await supabase.from("trips").delete().eq("id", id).eq("owner_id", user.id);
+      if (error) setAppNotice(error.message || "Could not delete trip.");
+    }
   }
   function autoBuild() {
     mutateActiveTrip((trip) => {
