@@ -20,6 +20,10 @@ import {
   Hotel,
   Users,
   Briefcase,
+  Settings,
+  UserCircle,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -33,6 +37,24 @@ const CATEGORIES = [
 ];
 
 const STORAGE_KEY = "its-a-trip-multitrip-v1";
+const SETTINGS_KEY = "its-a-trip-settings-v1";
+
+const TIME_OF_DAY_OPTIONS = [
+  { key: "", label: "No time preference", fallback: "" },
+  { key: "morning", label: "Morning", fallback: "09:30" },
+  { key: "afternoon", label: "Afternoon", fallback: "14:00" },
+  { key: "evening", label: "Evening", fallback: "19:30" },
+];
+
+function getTimeOfDayLabel(key) {
+  return TIME_OF_DAY_OPTIONS.find((option) => option.key === key)?.label || "";
+}
+
+function resolveScheduleTime(idea, category) {
+  if (idea.time) return idea.time;
+  const bucket = TIME_OF_DAY_OPTIONS.find((option) => option.key === idea.timeOfDay);
+  return bucket?.fallback || category.defaultTime;
+}
 
 function uid() {
   return crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
@@ -113,12 +135,25 @@ export default function App() {
   const [showTripEditor, setShowTripEditor] = useState(false);
   const [calendarMode, setCalendarMode] = useState("month");
   const [calendarCursor, setCalendarCursor] = useState(() => new Date(todayISO() + "T12:00:00"));
-  const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "", date: "", time: "" });
+  const [newIdea, setNewIdea] = useState({ title: "", category: "breakfast", link: "", notes: "", date: "", time: "", timeOfDay: "" });
+  const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}").theme || "dark";
+    } catch {
+      return "dark";
+    }
+  });
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trips));
     if (trips.length && !trips.some((trip) => trip.id === activeTripId)) setActiveTripId(trips[0].id);
   }, [trips, activeTripId]);
+
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ theme }));
+  }, [theme]);
 
   const activeTrip = trips.find((trip) => trip.id === activeTripId) || null;
   const tripDates = useMemo(() => getDateRange(activeTrip?.startDate, activeTrip?.endDate), [activeTrip]);
@@ -174,9 +209,10 @@ export default function App() {
       votes: 0,
       date: newIdea.date || "",
       time: newIdea.time || "",
+      timeOfDay: newIdea.timeOfDay || "",
     };
     updateTrip({ ideas: [idea, ...ideas] });
-    setNewIdea({ title: "", category: newIdea.category, link: "", notes: "", date: "", time: "" });
+    setNewIdea({ title: "", category: newIdea.category, link: "", notes: "", date: "", time: "", timeOfDay: "" });
   }
 
   function updateIdea(id, updates) {
@@ -201,7 +237,7 @@ export default function App() {
       // Fixed-date ideas keep the date/time the user entered on the planning board.
       categoryIdeas
         .filter((idea) => idea.date)
-        .forEach((idea) => assignments.set(idea.id, { date: idea.date, time: idea.time || cat.defaultTime }));
+        .forEach((idea) => assignments.set(idea.id, { date: idea.date, time: resolveScheduleTime(idea, cat), timeOfDay: idea.timeOfDay || "" }));
 
       // Flexible ideas fill the remaining trip days by vote count.
       const takenDates = new Set(categoryIdeas.filter((idea) => idea.date).map((idea) => idea.date));
@@ -209,7 +245,7 @@ export default function App() {
       categoryIdeas
         .filter((idea) => !idea.date)
         .slice(0, openDates.length)
-        .forEach((idea, index) => assignments.set(idea.id, { date: openDates[index % openDates.length], time: idea.time || cat.defaultTime }));
+        .forEach((idea, index) => assignments.set(idea.id, { date: openDates[index % openDates.length], time: resolveScheduleTime(idea, cat), timeOfDay: idea.timeOfDay || "" }));
     });
     updateTrip({ ideas: ideas.map((idea) => (assignments.has(idea.id) ? { ...idea, ...assignments.get(idea.id) } : idea)) });
     setPage("itinerary");
@@ -242,7 +278,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${theme === "light" ? "light-mode" : "dark-mode"}`}>
       <style>{styles}</style>
       <header className="hero">
         <div className="orb orb-one" />
@@ -256,6 +292,7 @@ export default function App() {
           <div className="top-actions">
             <button className="ghost-button" onClick={addTrip}><Plus size={16} /> Add trip</button>
             {activeTrip && <button className="ghost-button" onClick={() => setShowTripEditor(true)}><Edit3 size={16} /> Edit trip</button>}
+            <button className="ghost-button" onClick={() => setShowSettings(true)}><Settings size={16} /> Settings</button>
           </div>
         </nav>
 
@@ -355,6 +392,49 @@ export default function App() {
         </div>
       )}
 
+
+
+      {showSettings && (
+        <div className="modal-backdrop" onClick={() => setShowSettings(false)}>
+          <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="close" onClick={() => setShowSettings(false)}><X size={18} /></button>
+            <p className="eyebrow">App settings</p>
+            <h3>Settings</h3>
+            <div className="settings-section">
+              <strong>Appearance</strong>
+              <p>Choose how the planner looks while you build trips.</p>
+              <div className="theme-toggle">
+                <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button>
+                <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button>
+              </div>
+            </div>
+            <button className="profile-row" onClick={() => { setShowProfile(true); setShowSettings(false); }}>
+              <UserCircle size={22} />
+              <span><strong>Profile</strong><em>View your full profile — coming next</em></span>
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showProfile && (
+        <div className="modal-backdrop" onClick={() => setShowProfile(false)}>
+          <div className="modal profile-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="close" onClick={() => setShowProfile(false)}><X size={18} /></button>
+            <div className="profile-avatar"><UserCircle size={42} /></div>
+            <p className="eyebrow">Profile</p>
+            <h3>Your profile</h3>
+            <p className="profile-copy">This is the future home for your name, photo, saved trips, travel style, followers, shared itineraries, and preferences.</p>
+            <div className="profile-preview-grid">
+              <div><strong>{trips.length}</strong><span>Trips</span></div>
+              <div><strong>{allScheduledItems.length}</strong><span>Scheduled plans</span></div>
+              <div><strong>{theme}</strong><span>Theme</span></div>
+            </div>
+            <button className="primary-button full" onClick={() => setShowProfile(false)}><CheckCircle2 size={17} /> Close</button>
+          </div>
+        </div>
+      )}
+
       {editingIdea && activeTrip && (
         <div className="modal-backdrop" onClick={() => setEditingIdea(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -368,8 +448,13 @@ export default function App() {
             </div>
             <div className="two-col">
               <label>Date<select value={editingIdea.date} onChange={(e) => updateIdea(editingIdea.id, { date: e.target.value })}><option value="">Not scheduled yet</option>{tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}</select></label>
-              <label>Time<input type="time" value={editingIdea.time} onChange={(e) => updateIdea(editingIdea.id, { time: e.target.value })} /></label>
+              <label>Exact time<input type="time" value={editingIdea.time} onChange={(e) => updateIdea(editingIdea.id, { time: e.target.value })} /></label>
             </div>
+            <label>Time of day
+              <select value={editingIdea.timeOfDay || ""} onChange={(e) => updateIdea(editingIdea.id, { timeOfDay: e.target.value })}>
+                {TIME_OF_DAY_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+              </select>
+            </label>
             <label>Link<input value={editingIdea.link} onChange={(e) => updateIdea(editingIdea.id, { link: e.target.value })} placeholder="Paste Google Maps, TikTok, restaurant link..." /></label>
             <label>Notes<textarea value={editingIdea.notes} onChange={(e) => updateIdea(editingIdea.id, { notes: e.target.value })} /></label>
             <div className="modal-actions">
@@ -414,6 +499,9 @@ function PlanningBoard({ ideas, totalIdeas, activeCategory, setActiveCategory, c
             {tripDates.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}
           </select>
           <input type="time" value={newIdea.time} onChange={(e) => setNewIdea({ ...newIdea, time: e.target.value })} />
+          <select value={newIdea.timeOfDay} onChange={(e) => setNewIdea({ ...newIdea, timeOfDay: e.target.value })}>
+            {TIME_OF_DAY_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+          </select>
         </div>
         <textarea value={newIdea.notes} onChange={(e) => setNewIdea({ ...newIdea, notes: e.target.value })} placeholder="Notes, reservation details, why people should vote for it..." />
         <button className="primary-button" type="submit"><Plus size={17} /> Add to trip</button>
@@ -677,7 +765,7 @@ function IdeaCard({ idea, onEdit, onVote }) {
       <h4>{idea.title}</h4>
       {idea.notes && <p>{idea.notes}</p>}
       <div className="card-footer">
-        {idea.date ? <span><CalendarDays size={14} /> {formatDateLabel(idea.date, { short: true })} {idea.time && `• ${idea.time}`}</span> : <span><Clock size={14} /> Click to schedule</span>}
+        {idea.date ? <span><CalendarDays size={14} /> {formatDateLabel(idea.date, { short: true })} {idea.time ? `• ${idea.time}` : idea.timeOfDay ? `• ${getTimeOfDayLabel(idea.timeOfDay)}` : ""}</span> : <span><Clock size={14} /> {idea.timeOfDay ? getTimeOfDayLabel(idea.timeOfDay) : "Click to schedule"}</span>}
         {idea.link && <span><LinkIcon size={14} /> Link saved</span>}
       </div>
     </article>
@@ -688,7 +776,7 @@ function TimelineItem({ idea, onEdit }) {
   const category = getCategory(idea.category);
   return (
     <button className="timeline-item" style={{ "--accent": category.accent }} onClick={onEdit}>
-      <div className="time-chip">{idea.time || "Anytime"}</div>
+      <div className="time-chip">{idea.time || getTimeOfDayLabel(idea.timeOfDay) || "Anytime"}</div>
       <div>
         <span>{category.emoji} {category.label}</span>
         <strong>{idea.title}</strong>
@@ -741,7 +829,7 @@ button, input, textarea, select { font: inherit; }
 .mini-count { color: #cbd5e1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); padding: 8px 11px; border-radius: 999px; font-size: 12px; font-weight: 900; white-space: nowrap; }
 .add-form { display: grid; grid-template-columns: 1.2fr .75fr 1fr 1fr auto; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
 .add-form textarea { grid-column: 1 / 5; min-height: 58px; }
-.date-time-row { display: grid; grid-template-columns: 1.2fr .8fr; gap: 8px; }
+.date-time-row { display: grid; grid-template-columns: 1.1fr .7fr 1fr; gap: 8px; }
 input, textarea, select { width: 100%; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.08); color: #f8fafc; border-radius: 16px; padding: 12px 13px; outline: none; }
 select option { background: #0f172a; color: white; }
 textarea { min-height: 86px; resize: vertical; }
@@ -821,6 +909,35 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 .logistics-list { display: grid; gap: 12px; align-content: start; }
 .logistics-card label { display: grid; gap: 7px; color: #cbd5e1; font-weight: 850; font-size: 12px; margin: 0; }
 .modal-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+
+.settings-modal .settings-section { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.1); border-radius: 22px; padding: 16px; margin-bottom: 14px; }
+.settings-section strong { display: block; margin-bottom: 5px; }
+.settings-section p, .profile-copy { color: #94a3b8; line-height: 1.55; margin: 0 0 12px; }
+.theme-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.theme-toggle button, .profile-row { border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.07); color: white; border-radius: 18px; padding: 12px; font-weight: 950; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.theme-toggle button.active { background: linear-gradient(135deg, #ffffff, #dbeafe); color: #0f172a; }
+.profile-row { width: 100%; justify-content: flex-start; text-align: left; }
+.profile-row span { display: grid; gap: 2px; flex: 1; }
+.profile-row em { color: #94a3b8; font-style: normal; font-size: 12px; }
+.profile-avatar { width: 78px; height: 78px; border-radius: 28px; background: linear-gradient(135deg, #dbeafe, #fbcfe8); color: #0f172a; display: grid; place-items: center; margin-bottom: 14px; }
+.profile-preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
+.profile-preview-grid div { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; padding: 14px; display: grid; gap: 4px; }
+.profile-preview-grid strong { font-size: 22px; letter-spacing: -.04em; text-transform: capitalize; }
+.profile-preview-grid span { color: #94a3b8; font-size: 12px; font-weight: 900; }
+.light-mode { color: #0f172a; background: #f8fbff; }
+.light-mode body, body:has(.light-mode) { background: radial-gradient(circle at top left, rgba(125, 211, 252, .28), transparent 30rem), radial-gradient(circle at top right, rgba(251, 207, 232, .52), transparent 34rem), linear-gradient(135deg, #f8fbff 0%, #eff6ff 52%, #fdf2f8 100%); }
+.light-mode .hero-card, .light-mode .panel, .light-mode .modal, .light-mode .empty-start { background: rgba(255,255,255,.78); border-color: rgba(15,23,42,.1); box-shadow: 0 24px 80px rgba(15,23,42,.12); }
+.light-mode .hero-subtitle, .light-mode .hero-card p, .light-mode .empty-start p:not(.eyebrow), .light-mode .idea-card p, .light-mode .timeline-item p, .light-mode .settings-section p, .light-mode .profile-copy { color: #475569; }
+.light-mode .ghost-button, .light-mode .icon-button, .light-mode .category-chip, .light-mode .idea-card, .light-mode .day-card, .light-mode .logistics-form, .light-mode .logistics-card, .light-mode .calendar-cell, .light-mode .month-card, .light-mode .settings-modal .settings-section, .light-mode .profile-preview-grid div { background: rgba(255,255,255,.72); color: #0f172a; border-color: rgba(15,23,42,.1); }
+.light-mode input, .light-mode textarea, .light-mode select { background: rgba(255,255,255,.86); color: #0f172a; border-color: rgba(15,23,42,.12); }
+.light-mode select option { background: white; color: #0f172a; }
+.light-mode .category-badge, .light-mode .vote-button, .light-mode .hero-meta span, .light-mode .mini-count, .light-mode .day-header span, .light-mode .mode-toggle, .light-mode .profile-row, .light-mode .theme-toggle button { background: rgba(15,23,42,.06); color: #0f172a; border-color: rgba(15,23,42,.1); }
+.light-mode .category-chip.active, .light-mode .mode-toggle button.active { background: #0f172a; color: white; }
+.light-mode .cell-date strong, .light-mode .timeline-item, .light-mode .mini-calendar-item, .light-mode .close { color: #0f172a; }
+.light-mode .timeline-item, .light-mode .mini-calendar-item { background: rgba(255,255,255,.82); border-color: rgba(15,23,42,.1); }
+.light-mode .empty-day, .light-mode .empty-state { color: #64748b; border-color: rgba(15,23,42,.16); background: rgba(255,255,255,.52); }
+.light-mode .topbar h1, .light-mode .hero h2, .light-mode .day-header h4, .light-mode .section-heading h3, .light-mode .modal h3 { color: #0f172a; }
+
 @media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .logistics-grid, .saved-logistics { grid-template-columns: 1fr; } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .hero, .workspace { padding: 16px; } .topbar { align-items: flex-start; } .top-actions { width: 100%; margin-left: 0; } .hero h2 { font-size: 44px; } .add-form, .two-col, .three-col, .date-time-row, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; } .add-form textarea { grid-column: auto; } .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; } .calendar-controls { justify-content: flex-start; } .section-heading { align-items: flex-start; flex-direction: column; } }
 `;
