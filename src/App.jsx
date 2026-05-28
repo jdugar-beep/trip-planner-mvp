@@ -31,6 +31,8 @@ import {
   Wand2,
 } from "lucide-react";
 
+import { supabase } from "./supabaseClient";
+
 const CATEGORIES = ["breakfast", "lunch", "dinner", "activity", "drinks", "sightseeing", "exploring"];
 const CATEGORY_LABELS = {
   breakfast: "Breakfast",
@@ -60,7 +62,7 @@ const CATEGORY_DESCRIPTIONS = {
   exploring: "Neighborhoods and wandering",
 };
 const PERIOD_TIMES = { morning: "09:30", afternoon: "14:00", evening: "19:00" };
-const uid = () => Math.random().toString(36).slice(2, 10);
+const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2, 10));
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 function addDays(date, days) {
@@ -102,6 +104,201 @@ function defaultTrip() {
   };
 }
 
+
+const dbTripToAppTrip = (trip) => ({
+  id: trip.id,
+  name: trip.name || "New Trip",
+  location: trip.location || "",
+  startDate: trip.start_date || todayIso(),
+  endDate: trip.end_date || addDays(todayIso(), 3),
+  ideas: [],
+  hotels: [],
+  travelers: [],
+  collaborators: [],
+  activityLog: [],
+});
+
+const appTripToDbTrip = (trip, userId) => ({
+  id: trip.id,
+  owner_id: userId,
+  name: trip.name || "New Trip",
+  location: trip.location || "",
+  start_date: trip.startDate || null,
+  end_date: trip.endDate || null,
+  visibility: "private",
+});
+
+const appIdeaToDb = (idea, tripId, userId) => ({
+  id: idea.id,
+  trip_id: tripId,
+  created_by: idea.created_by || userId,
+  title: idea.title || "Untitled",
+  category: idea.category || "activity",
+  link: idea.link || null,
+  notes: idea.notes || null,
+  preferred_date: idea.date || null,
+  preferred_time: idea.time || null,
+  preferred_period: idea.period || null,
+  scheduled_date: idea.scheduledDate || null,
+  scheduled_time: idea.scheduledTime || null,
+});
+
+const dbIdeaToApp = (item, voteTotals = {}) => ({
+  id: item.id,
+  title: item.title || "",
+  category: item.category || "activity",
+  link: item.link || "",
+  notes: item.notes || "",
+  date: item.preferred_date || "",
+  time: item.preferred_time ? item.preferred_time.slice(0, 5) : "",
+  period: item.preferred_period || "",
+  scheduledDate: item.scheduled_date || "",
+  scheduledTime: item.scheduled_time ? item.scheduled_time.slice(0, 5) : "",
+  votes: voteTotals[item.id] || 0,
+  created_by: item.created_by,
+});
+
+const appHotelToDb = (hotel, tripId) => ({
+  id: hotel.id,
+  trip_id: tripId,
+  name: hotel.name || null,
+  address: hotel.address || null,
+  check_in_date: hotel.checkInDate || null,
+  check_in_time: hotel.checkInTime || null,
+  check_out_date: hotel.checkOutDate || null,
+  check_out_time: hotel.checkOutTime || null,
+  confirmation: hotel.confirmation || null,
+  notes: hotel.notes || null,
+});
+
+const dbHotelToApp = (hotel) => ({
+  id: hotel.id,
+  name: hotel.name || "",
+  address: hotel.address || "",
+  checkInDate: hotel.check_in_date || "",
+  checkInTime: hotel.check_in_time ? hotel.check_in_time.slice(0, 5) : "",
+  checkOutDate: hotel.check_out_date || "",
+  checkOutTime: hotel.check_out_time ? hotel.check_out_time.slice(0, 5) : "",
+  confirmation: hotel.confirmation || "",
+  notes: hotel.notes || "",
+});
+
+const appTravelerToDb = (traveler, tripId) => ({
+  id: traveler.id,
+  trip_id: tripId,
+  name: traveler.name || "Traveler",
+  user_id: traveler.user_id || null,
+});
+
+const dbTravelerToApp = (traveler, flights = []) => ({
+  id: traveler.id,
+  name: traveler.name || "Traveler",
+  user_id: traveler.user_id || null,
+  flights,
+});
+
+const appFlightToDb = (flight, travelerId) => ({
+  id: flight.id,
+  traveler_id: travelerId,
+  airline: flight.airline || null,
+  flight_number: flight.flightNumber || null,
+  from_airport: flight.from || null,
+  to_airport: flight.to || null,
+  depart_date: flight.departDate || null,
+  depart_time: flight.departTime || null,
+  arrive_date: flight.arriveDate || null,
+  arrive_time: flight.arriveTime || null,
+  confirmation: flight.confirmation || null,
+  seat: flight.seat || null,
+  notes: flight.notes || null,
+});
+
+const dbFlightToApp = (flight) => ({
+  id: flight.id,
+  airline: flight.airline || "",
+  flightNumber: flight.flight_number || "",
+  from: flight.from_airport || "",
+  to: flight.to_airport || "",
+  departDate: flight.depart_date || "",
+  departTime: flight.depart_time ? flight.depart_time.slice(0, 5) : "",
+  arriveDate: flight.arrive_date || "",
+  arriveTime: flight.arrive_time ? flight.arrive_time.slice(0, 5) : "",
+  confirmation: flight.confirmation || "",
+  seat: flight.seat || "",
+  notes: flight.notes || "",
+});
+
+async function saveTripDeepToSupabase(trip, userId) {
+  if (!userId || !trip?.id) return;
+  await supabase.from("trips").upsert(appTripToDbTrip(trip, userId));
+
+  if (Array.isArray(trip.ideas)) {
+    const rows = trip.ideas.map((idea) => appIdeaToDb(idea, trip.id, userId));
+    if (rows.length) await supabase.from("planning_items").upsert(rows);
+  }
+
+  if (Array.isArray(trip.hotels)) {
+    const rows = trip.hotels.map((hotel) => appHotelToDb(hotel, trip.id));
+    if (rows.length) await supabase.from("hotels").upsert(rows);
+  }
+
+  if (Array.isArray(trip.travelers)) {
+    const travelerRows = trip.travelers.map((traveler) => appTravelerToDb(traveler, trip.id));
+    if (travelerRows.length) await supabase.from("travelers").upsert(travelerRows);
+
+    const flightRows = trip.travelers.flatMap((traveler) => (traveler.flights || []).map((flight) => appFlightToDb(flight, traveler.id)));
+    if (flightRows.length) await supabase.from("flights").upsert(flightRows);
+  }
+}
+
+async function loadTripsFromSupabase(userId) {
+  if (!userId) return [];
+
+  const { data: memberRows, error: memberError } = await supabase
+    .from("trip_members")
+    .select("role, trips(*)")
+    .eq("user_id", userId);
+
+  if (memberError) throw memberError;
+
+  const trips = (memberRows || []).map((row) => dbTripToAppTrip(row.trips)).filter(Boolean);
+  const tripIds = trips.map((trip) => trip.id);
+  if (!tripIds.length) return [];
+
+  const [{ data: items = [] }, { data: hotels = [] }, { data: travelers = [] }, { data: flights = [] }, { data: members = [] }] = await Promise.all([
+    supabase.from("planning_items").select("*").in("trip_id", tripIds),
+    supabase.from("hotels").select("*").in("trip_id", tripIds),
+    supabase.from("travelers").select("*").in("trip_id", tripIds),
+    supabase.from("flights").select("*"),
+    supabase.from("trip_members").select("trip_id,user_id,role").in("trip_id", tripIds),
+  ]);
+
+  const itemIds = items.map((item) => item.id);
+  let voteRows = [];
+  if (itemIds.length) {
+    const { data } = await supabase.from("votes").select("planning_item_id,value").in("planning_item_id", itemIds);
+    voteRows = data || [];
+  }
+  const voteTotals = voteRows.reduce((acc, vote) => {
+    acc[vote.planning_item_id] = (acc[vote.planning_item_id] || 0) + (vote.value || 0);
+    return acc;
+  }, {});
+
+  const flightsByTraveler = flights.reduce((acc, flight) => {
+    if (!acc[flight.traveler_id]) acc[flight.traveler_id] = [];
+    acc[flight.traveler_id].push(dbFlightToApp(flight));
+    return acc;
+  }, {});
+
+  return trips.map((trip) => ({
+    ...trip,
+    ideas: items.filter((item) => item.trip_id === trip.id).map((item) => dbIdeaToApp(item, voteTotals)),
+    hotels: hotels.filter((hotel) => hotel.trip_id === trip.id).map(dbHotelToApp),
+    travelers: travelers.filter((traveler) => traveler.trip_id === trip.id).map((traveler) => dbTravelerToApp(traveler, flightsByTraveler[traveler.id] || [])),
+    collaborators: members.filter((member) => member.trip_id === trip.id).map((member) => ({ id: member.user_id, role: member.role })),
+  }));
+}
+
 export default function App() {
   const [trips, setTrips] = useLocalStorage("trip-planner-mobile-beta-trips", []);
   const [activeTripId, setActiveTripId] = useLocalStorage("trip-planner-mobile-beta-active", null);
@@ -114,6 +311,86 @@ export default function App() {
   const [tripEditorOpen, setTripEditorOpen] = useState(false);
   const [tripSwitcherOpen, setTripSwitcherOpen] = useState(false);
   const [ideaEditor, setIdeaEditor] = useState(null);
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [appNotice, setAppNotice] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      setUser(data.session?.user || null);
+      if (!data.session?.user) setAuthOpen(true);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+      if (!session?.user) setAuthOpen(true);
+    });
+    return () => {
+      alive = false;
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(async ({ data }) => {
+        if (data) {
+          setProfile(data);
+          return;
+        }
+        const fallbackUsername = (user.email || "traveler").split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20) || `user_${user.id.slice(0, 6)}`;
+        const { data: created } = await supabase
+          .from("profiles")
+          .upsert({ id: user.id, username: fallbackUsername, full_name: fallbackUsername })
+          .select()
+          .single();
+        setProfile(created || null);
+      });
+  }, [user]);
+
+  async function refreshTripsFromSupabase() {
+    if (!user) return;
+    setLoadingTrips(true);
+    try {
+      const loaded = await loadTripsFromSupabase(user.id);
+      setTrips(loaded);
+      if (loaded.length && !loaded.some((t) => t.id === activeTripId)) setActiveTripId(loaded[0].id);
+      if (!loaded.length) setActiveTripId(null);
+    } catch (err) {
+      console.error(err);
+      setAppNotice(err.message || "Could not load trips from Supabase.");
+    } finally {
+      setLoadingTrips(false);
+    }
+  }
+
+  useEffect(() => {
+    refreshTripsFromSupabase();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("trip-studio-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_invites" }, refreshTripsFromSupabase)
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_members" }, refreshTripsFromSupabase)
+      .on("postgres_changes", { event: "*", schema: "public", table: "trips" }, refreshTripsFromSupabase)
+      .on("postgres_changes", { event: "*", schema: "public", table: "planning_items" }, refreshTripsFromSupabase)
+      .on("postgres_changes", { event: "*", schema: "public", table: "hotels" }, refreshTripsFromSupabase)
+      .on("postgres_changes", { event: "*", schema: "public", table: "travelers" }, refreshTripsFromSupabase)
+      .on("postgres_changes", { event: "*", schema: "public", table: "flights" }, refreshTripsFromSupabase)
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [user?.id, activeTripId]);
 
   useEffect(() => {
     if (trips.length && !trips.some((t) => t.id === activeTripId)) setActiveTripId(trips[0].id);
@@ -121,23 +398,37 @@ export default function App() {
 
   const activeTrip = trips.find((t) => t.id === activeTripId) || null;
 
-  function updateTrip(id, patch) {
+  async function updateTrip(id, patch) {
+    const current = trips.find((t) => t.id === id);
+    const updated = current ? { ...current, ...patch } : null;
     setTrips((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    if (user && updated) await saveTripDeepToSupabase(updated, user.id);
   }
   function mutateActiveTrip(fn) {
     if (!activeTrip) return;
-    setTrips((prev) => prev.map((t) => (t.id === activeTrip.id ? fn(t) : t)));
+    setTrips((prev) => {
+      const updatedTrips = prev.map((t) => (t.id === activeTrip.id ? fn(t) : t));
+      const updated = updatedTrips.find((t) => t.id === activeTrip.id);
+      if (user && updated) saveTripDeepToSupabase(updated, user.id);
+      return updatedTrips;
+    });
   }
-  function addTrip() {
+  async function addTrip() {
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
     const t = defaultTrip();
     setTrips((prev) => [...prev, t]);
     setActiveTripId(t.id);
     setPage("planning");
     setTripEditorOpen(true);
+    await saveTripDeepToSupabase(t, user.id);
   }
-  function deleteTrip(id) {
+  async function deleteTrip(id) {
     setTrips((prev) => prev.filter((t) => t.id !== id));
     if (activeTripId === id) setActiveTripId(trips.find((t) => t.id !== id)?.id || null);
+    if (user) await supabase.from("trips").delete().eq("id", id).eq("owner_id", user.id);
   }
   function autoBuild() {
     mutateActiveTrip((trip) => {
@@ -188,9 +479,11 @@ export default function App() {
       </main>
       <MobileBottomNav page={page} setPage={setPage} addTrip={addTrip} />
       {settingsOpen && <SettingsModal theme={theme} setTheme={setTheme} close={() => setSettingsOpen(false)} />}
-      {notificationsOpen && <NotificationsModal trips={trips} activeTrip={activeTrip} close={() => setNotificationsOpen(false)} />}
-      {profileOpen && <ProfileModal trips={trips} close={() => setProfileOpen(false)} />}
-      {shareOpen && activeTrip && <ShareTripModal trip={activeTrip} mutateTrip={mutateActiveTrip} close={() => setShareOpen(false)} />}
+      {appNotice && <div className="toastNotice" onClick={() => setAppNotice("")}>{appNotice}</div>}
+      {authOpen && <AuthModal close={() => setAuthOpen(false)} />}
+      {notificationsOpen && <NotificationsModal user={user} trips={trips} activeTrip={activeTrip} refreshTrips={refreshTripsFromSupabase} close={() => setNotificationsOpen(false)} />}
+      {profileOpen && <ProfileModal user={user} profile={profile} trips={trips} close={() => setProfileOpen(false)} />}
+      {shareOpen && activeTrip && <ShareTripModal user={user} trip={activeTrip} refreshTrips={refreshTripsFromSupabase} close={() => setShareOpen(false)} />}
       {tripEditorOpen && activeTrip && <TripEditor trip={activeTrip} save={(patch) => updateTrip(activeTrip.id, patch)} deleteTrip={() => deleteTrip(activeTrip.id)} close={() => setTripEditorOpen(false)} />}
       {tripSwitcherOpen && <TripSwitcher trips={trips} activeTripId={activeTripId} selectTrip={(id) => { setActiveTripId(id); setTripSwitcherOpen(false); setPage("planning"); }} addTrip={() => { setTripSwitcherOpen(false); addTrip(); }} close={() => setTripSwitcherOpen(false)} />}
       {ideaEditor && activeTrip && <IdeaEditor idea={ideaEditor} trip={activeTrip} mutateTrip={mutateActiveTrip} close={() => setIdeaEditor(null)} />}
@@ -496,91 +789,296 @@ function TripSwitcher({ trips, activeTripId, selectTrip, addTrip, close }) {
 function TripEditor({ trip, save, deleteTrip, close }) { const [draft, setDraft] = useState({ name: trip.name, location: trip.location, startDate: trip.startDate, endDate: trip.endDate }); return <Modal close={close}><h2>Edit Trip</h2><input placeholder="Trip name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /><input placeholder="Location" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} /><div className="split2"><input type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} /><input type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} /></div><button className="primaryBtn full" onClick={() => { save(draft); close(); }}>Save Trip</button><button className="textDanger" onClick={() => { deleteTrip(); close(); }}>Delete Trip</button></Modal>; }
 function IdeaEditor({ idea, trip, mutateTrip, close }) { const [draft, setDraft] = useState(idea); const dates = daysBetween(trip.startDate, trip.endDate); function save() { mutateTrip((t) => ({ ...t, ideas: t.ideas.map((i) => i.id === idea.id ? { ...draft, scheduledDate: draft.scheduledDate || draft.date, scheduledTime: draft.scheduledTime || draft.time || PERIOD_TIMES[draft.period] || "" } : i) })); close(); } function del() { mutateTrip((t) => ({ ...t, ideas: t.ideas.filter((i) => i.id !== idea.id) })); close(); } return <Modal close={close}><h2>Edit Plan</h2><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>{CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}</select><input placeholder="Link" value={draft.link || ""} onChange={(e) => setDraft({ ...draft, link: e.target.value })} /><textarea placeholder="Notes" value={draft.notes || ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /><select value={draft.scheduledDate || draft.date || ""} onChange={(e) => setDraft({ ...draft, scheduledDate: e.target.value, date: e.target.value })}><option value="">Unscheduled</option>{dates.map((d) => <option key={d} value={d}>{prettyDate(d)}</option>)}</select><div className="split2"><select value={draft.period || ""} onChange={(e) => setDraft({ ...draft, period: e.target.value, scheduledTime: PERIOD_TIMES[e.target.value] || "", time: "" })}><option value="">Flexible</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option></select><input type="time" value={draft.scheduledTime || draft.time || ""} onChange={(e) => setDraft({ ...draft, scheduledTime: e.target.value, time: e.target.value, period: "" })} /></div><button className="primaryBtn full" onClick={save}>Save Plan</button><button className="textDanger" onClick={del}>Delete Plan</button></Modal>; }
 
-function ShareTripModal({ trip, mutateTrip, close }) {
-  const [email, setEmail] = useState("");
-  const collaborators = trip.collaborators || [];
-  function invite() {
-    if (!email.trim()) return;
-    const clean = email.trim().toLowerCase();
-    mutateTrip((t) => ({
-      ...t,
-      collaborators: [...(t.collaborators || []), { id: uid(), email: clean, status: "pending", invitedAt: new Date().toISOString() }],
-      activityLog: [{ id: uid(), type: "invite", text: `Invite sent to ${clean}`, createdAt: new Date().toISOString() }, ...(t.activityLog || [])],
-    }));
-    setEmail("");
+
+function ShareTripModal({ user, trip, refreshTrips, close }) {
+  const [query, setQuery] = useState("");
+  const [matches, setMatches] = useState([]);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [busyId, setBusyId] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function loadPendingInvites() {
+    if (!trip?.id) return;
+    const { data } = await supabase
+      .from("trip_invites")
+      .select("id,status,invited_user_id,profiles!trip_invites_invited_user_id_fkey(id,username,full_name,avatar_url)")
+      .eq("trip_id", trip.id)
+      .eq("status", "pending");
+    setPendingInvites(data || []);
   }
+
+  useEffect(() => {
+    loadPendingInvites();
+  }, [trip?.id]);
+
+  useEffect(() => {
+    let alive = true;
+    async function searchUsers() {
+      if (!query.trim() || query.trim().length < 2) {
+        setMatches([]);
+        return;
+      }
+      const clean = query.trim();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,username,full_name,avatar_url")
+        .or(`username.ilike.%${clean}%,full_name.ilike.%${clean}%`)
+        .neq("id", user?.id || "00000000-0000-0000-0000-000000000000")
+        .limit(12);
+
+      if (!alive) return;
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      setMatches(data || []);
+    }
+    const t = setTimeout(searchUsers, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [query, user?.id]);
+
+  async function inviteUser(profile) {
+    if (!user) {
+      setMessage("Sign in first to invite collaborators.");
+      return;
+    }
+    setBusyId(profile.id);
+    setMessage("");
+    const { error } = await supabase.from("trip_invites").insert({
+      trip_id: trip.id,
+      invited_by: user.id,
+      invited_user_id: profile.id,
+      status: "pending",
+    });
+    setBusyId("");
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setMessage(`Invite sent to @${profile.username || profile.full_name || "user"}.`);
+    setQuery("");
+    setMatches([]);
+    await loadPendingInvites();
+  }
+
   return (
     <Modal close={close}>
       <div className="sheetKicker">Share Trip</div>
       <h2>Invite collaborators</h2>
-      <p className="modalSubcopy">Send this trip to someone else. Once Supabase auth is wired in, accepted collaborators will see live edits and shared itinerary updates.</p>
-      <div className="shareInputRow">
-        <input type="email" placeholder="Friend’s email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <button className="primaryBtn compact" onClick={invite}><UserPlus size={16} /> Invite</button>
+      <p className="modalSubcopy">Search for people in the app and send an invite. When they accept, this same trip appears in their account and edits sync for everyone.</p>
+
+      {!user && <div className="softEmpty">Sign in first to search for users and send in-app invites.</div>}
+
+      <div className="userSearchBox">
+        <Search size={17} />
+        <input placeholder="Search by username or name" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
-      <div className="shareLinkBox">
-        <b>Trip access</b>
-        <span>Collaborators can add ideas, vote, edit logistics, and update the itinerary.</span>
-      </div>
+
+      {message && <div className="inlineNotice">{message}</div>}
+
       <div className="collabList">
-        <h3>Collaborators</h3>
-        {collaborators.length === 0 && <div className="softEmpty">No collaborators yet</div>}
-        {collaborators.map((c) => (
-          <div className="collabRow" key={c.id}>
-            <div className="avatarCircle">{(c.email || "?")[0].toUpperCase()}</div>
-            <div><b>{c.email}</b><span>{c.status === "accepted" ? "Accepted" : "Pending invite"}</span></div>
+        {matches.map((person) => (
+          <div className="collabRow" key={person.id}>
+            <div className="avatarCircle">{(person.full_name || person.username || "?")[0].toUpperCase()}</div>
+            <div>
+              <b>{person.full_name || person.username || "Traveler"}</b>
+              <span>@{person.username || "no_username"}</span>
+            </div>
+            <button className="ghostBtn small" disabled={busyId === person.id} onClick={() => inviteUser(person)}>
+              <UserPlus size={15} /> {busyId === person.id ? "Sending" : "Invite"}
+            </button>
           </div>
         ))}
       </div>
+
+      <div className="shareLinkBox">
+        <b>How collaboration works</b>
+        <span>Accepted collaborators become trip members. They can add ideas, vote, edit logistics, and update the itinerary from their own account.</span>
+      </div>
+
+      <div className="collabList">
+        <h3>Pending invites</h3>
+        {pendingInvites.length === 0 && <div className="softEmpty">No pending invites.</div>}
+        {pendingInvites.map((invite) => {
+          const person = invite.profiles;
+          return (
+            <div className="collabRow" key={invite.id}>
+              <div className="avatarCircle">{(person?.full_name || person?.username || "?")[0].toUpperCase()}</div>
+              <div><b>{person?.full_name || person?.username || "Traveler"}</b><span>Pending invite</span></div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button className="ghostBtn full" onClick={refreshTrips}>Refresh shared trip data</button>
     </Modal>
   );
 }
 
-function NotificationsModal({ trips, activeTrip, close }) {
-  const activity = [
-    ...(activeTrip?.activityLog || []),
-    ...trips.flatMap((t) => (t.collaborators || []).map((c) => ({ id: `${t.id}-${c.id}`, type: "invite", text: `${c.email} was invited to ${t.name}`, createdAt: c.invitedAt || t.createdAt || new Date().toISOString() }))),
-  ].slice(0, 12);
+function NotificationsModal({ user, refreshTrips, close }) {
+  const [invites, setInvites] = useState([]);
+  const [busyId, setBusyId] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function loadInvites() {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("trip_invites")
+      .select("id,status,created_at,trips(id,name,location,start_date,end_date),profiles!trip_invites_invited_by_fkey(id,username,full_name,avatar_url)")
+      .eq("invited_user_id", user.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setInvites(data || []);
+  }
+
+  useEffect(() => {
+    loadInvites();
+  }, [user?.id]);
+
+  async function acceptInvite(inviteId) {
+    setBusyId(inviteId);
+    const { error } = await supabase.rpc("accept_trip_invite", { invite_id: inviteId });
+    setBusyId("");
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setMessage("Invite accepted.");
+    await loadInvites();
+    await refreshTrips();
+  }
+
+  async function declineInvite(inviteId) {
+    setBusyId(inviteId);
+    const { error } = await supabase.from("trip_invites").update({ status: "declined" }).eq("id", inviteId);
+    setBusyId("");
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setMessage("Invite declined.");
+    await loadInvites();
+  }
+
   return (
     <Modal close={close}>
       <div className="sheetKicker">Notifications</div>
       <h2>What’s new</h2>
+      {!user && <div className="softEmpty">Sign in to see trip invites and collaboration updates.</div>}
+      {message && <div className="inlineNotice">{message}</div>}
       <div className="notificationList">
-        {activity.length === 0 ? (
-          <div className="softEmpty">No notifications yet. Invites, accepted trips, edits, votes, and assignments will show up here.</div>
-        ) : activity.map((item) => (
-          <div className="notificationRow" key={item.id}>
-            <div className="notifIcon"><Bell size={15} /></div>
-            <div><b>{item.text}</b><span>{item.createdAt ? new Date(item.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Just now"}</span></div>
-          </div>
-        ))}
+        {invites.length === 0 ? (
+          <div className="softEmpty">No pending trip invites right now.</div>
+        ) : invites.map((invite) => {
+          const sender = invite.profiles;
+          const trip = invite.trips;
+          return (
+            <div className="notificationRow inviteNotification" key={invite.id}>
+              <div className="notifIcon"><Bell size={15} /></div>
+              <div>
+                <b>{sender?.full_name || sender?.username || "Someone"} invited you to {trip?.name || "a trip"}</b>
+                <span>{trip?.location || "No location"} · {invite.created_at ? new Date(invite.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Just now"}</span>
+                <div className="inviteActions">
+                  <button className="primaryBtn compact" disabled={busyId === invite.id} onClick={() => acceptInvite(invite.id)}>Accept</button>
+                  <button className="ghostBtn small" disabled={busyId === invite.id} onClick={() => declineInvite(invite.id)}>Decline</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </Modal>
   );
 }
 
-function ProfileModal({ trips, close }) {
+function ProfileModal({ user, profile, trips, close }) {
   const now = todayIso();
   const futureTrips = trips.filter((t) => (t.endDate || "9999-12-31") >= now).length;
   const pastTrips = trips.filter((t) => t.endDate && t.endDate < now).length;
-  const friends = Array.from(new Set(trips.flatMap((t) => (t.collaborators || []).map((c) => c.email))));
+  const friendIds = Array.from(new Set(trips.flatMap((t) => (t.collaborators || []).map((c) => c.id).filter(Boolean))));
+  async function signOut() {
+    await supabase.auth.signOut();
+    close();
+  }
   return (
     <Modal close={close}>
       <div className="sheetKicker">My Profile</div>
       <div className="profileHero">
-        <div className="profileAvatar">J</div>
-        <div><h2>Jay</h2><p>Your friends, trips, groups, and travel profile will live here.</p></div>
+        <div className="profileAvatar">{(profile?.full_name || profile?.username || user?.email || "J")[0].toUpperCase()}</div>
+        <div><h2>{profile?.full_name || profile?.username || user?.email || "Traveler"}</h2><p>{profile?.username ? `@${profile.username}` : "Set up your profile soon."}</p></div>
       </div>
       <div className="profileStats">
-        <div><b>{friends.length}</b><span>Friends</span></div>
+        <div><b>{friendIds.length}</b><span>Friends</span></div>
         <div><b>{pastTrips}</b><span>Past trips</span></div>
         <div><b>{futureTrips}</b><span>Future trips</span></div>
       </div>
       <div className="profileSection">
         <h3>Friends</h3>
-        {friends.length === 0 ? <div className="softEmpty">No friends yet. Invite someone to a trip to start building your travel circle.</div> : friends.map((f) => <div className="collabRow" key={f}><div className="avatarCircle">{f[0].toUpperCase()}</div><div><b>{f}</b><span>Friend</span></div></div>)}
+        {friendIds.length === 0 ? <div className="softEmpty">No friends yet. Invite someone to a trip to start building your travel circle.</div> : friendIds.map((f) => <div className="collabRow" key={f}><div className="avatarCircle">✓</div><div><b>Trip collaborator</b><span>{f}</span></div></div>)}
       </div>
-      <button className="ghostBtn full"><LogOut size={16} /> Log out</button>
+      <button className="ghostBtn full" onClick={signOut}><LogOut size={16} /> Log out</button>
+    </Modal>
+  );
+}
+
+function AuthModal({ close }) {
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function submit() {
+    setMessage("");
+    if (!email || !password) {
+      setMessage("Enter an email and password.");
+      return;
+    }
+
+    if (mode === "signup") {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      const userId = data.user?.id;
+      if (userId) {
+        const handle = username.trim() || email.split("@")[0];
+        await supabase.from("profiles").upsert({ id: userId, username: handle, full_name: handle });
+      }
+      setMessage("Account created. You can close this and start planning.");
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    close();
+  }
+
+  return (
+    <Modal close={close}>
+      <div className="sheetKicker">Trip Studio Account</div>
+      <h2>{mode === "signin" ? "Sign in" : "Create account"}</h2>
+      <p className="modalSubcopy">Sign in to save trips, invite in-app collaborators, and see shared trip edits.</p>
+      {mode === "signup" && <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))} />}
+      <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      {message && <div className="inlineNotice">{message}</div>}
+      <button className="primaryBtn full" onClick={submit}>{mode === "signin" ? "Sign in" : "Create account"}</button>
+      <button className="ghostBtn full" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
+        {mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}
+      </button>
     </Modal>
   );
 }
@@ -593,6 +1091,8 @@ const css = `
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}button,input,select,textarea{font:inherit}button{cursor:pointer}.app{min-height:100vh;color:var(--text);background:radial-gradient(circle at top left,var(--glow),transparent 38%),linear-gradient(135deg,var(--bg1),var(--bg2));padding-bottom:112px}.dark{--bg1:#050b17;--bg2:#142034;--panel:rgba(255,255,255,.075);--panel2:rgba(255,255,255,.105);--text:#f8fafc;--muted:#aeb8ca;--line:rgba(255,255,255,.13);--input:rgba(255,255,255,.095);--glow:rgba(249,115,22,.24);--chip:rgba(255,255,255,.09);--shadow:rgba(0,0,0,.22)}.light{--bg1:#fff7ed;--bg2:#eaf3ff;--panel:rgba(255,255,255,.76);--panel2:#fff;--text:#172033;--muted:#607089;--line:rgba(27,37,59,.12);--input:rgba(255,255,255,.82);--glow:rgba(249,115,22,.18);--chip:#f2f5fa;--shadow:rgba(25,34,50,.11)}.shell{width:min(1120px,100%);margin:0 auto;padding:18px}.desktopTop{display:none}.mobileHero{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:14px 2px 8px}.mobileHeroCopy{min-width:0;flex:1}.mobileTripTitle{border:0;background:transparent;color:var(--text);padding:0;margin:5px 0 8px;display:flex;align-items:center;gap:8px;max-width:100%;text-align:left}.mobileTripTitle span{font-size:31px;line-height:1;letter-spacing:-.03em;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobileTripTitle em{font-style:normal;color:#fb923c;font-size:22px;line-height:1;transform:translateY(-1px)}.eyebrow{color:#fb923c;text-transform:uppercase;font-weight:950;font-size:11px;letter-spacing:.16em}.mobileHero h1{font-size:31px;line-height:1;margin:5px 0 8px;letter-spacing:-.03em}.mobileHero p{margin:0;color:var(--muted);font-size:13px}.controlStrip{position:sticky;top:8px;z-index:5;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin:8px 0 18px;padding:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 76%,transparent);backdrop-filter:blur(20px);border-radius:26px;box-shadow:0 18px 45px var(--shadow)}.tripMini{min-width:0}.tripMini span{display:block;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tripMini small{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.controlStrip .primaryBtn{grid-column:1/-1}.primaryBtn,.orangeBtn{border:0;border-radius:999px;background:linear-gradient(135deg,#ff9d3d,#ff6b12);color:#fff;font-weight:950;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 15px;box-shadow:0 14px 28px rgba(249,115,22,.26)}.ghostBtn,.iconBtn{border:1px solid var(--line);background:var(--chip);color:var(--text);border-radius:999px;padding:10px 12px;display:inline-flex;align-items:center;justify-content:center;gap:7px}.small{font-size:12px;padding:8px 10px}.big{font-size:16px;padding:14px 18px}.full{width:100%}.pageStack{display:flex;flex-direction:column;gap:16px}.appSectionHead h2,.sectionHead h2{font-size:28px;letter-spacing:-.035em;margin:0 0 6px}.appSectionHead p,.sectionHead p{margin:0;color:var(--muted);font-size:15px;line-height:1.35}.addCard,.categoryBlock,.logCard,.travelerCard,.dayTimeline,.empty,.emptyMini,.planningCategoryCard,.logSummaryCard,.helperCard{border:1px solid var(--line);background:var(--panel);border-radius:26px;box-shadow:0 18px 45px var(--shadow);backdrop-filter:blur(18px)}input,select,textarea{width:100%;max-width:100%;min-width:0;border:1px solid var(--line);background:var(--input);color:var(--text);border-radius:18px;padding:13px 14px;outline:none;display:block;box-sizing:border-box}input[type="date"],input[type="time"]{width:100%;max-width:100%;min-width:0;-webkit-appearance:none;appearance:none}textarea{min-height:92px;resize:vertical}.split2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;width:100%;max-width:100%;min-width:0;overflow:hidden}.fieldLabel{font-size:12px;font-weight:950;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:2px 0 -5px}.plannerTip{display:flex;gap:12px;align-items:flex-start;border:1px solid rgba(251,146,60,.22);background:linear-gradient(135deg,rgba(251,146,60,.14),rgba(255,255,255,.055));border-radius:24px;padding:15px}.tipBulb{font-size:26px}.plannerTip b{display:block}.plannerTip p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.35}.categoryStack{display:flex;flex-direction:column;gap:14px}.planningCategoryCard{padding:0;overflow:hidden}.categoryAddRow{width:100%;border:0;background:transparent;color:var(--text);padding:15px;display:grid;grid-template-columns:44px 1fr auto 44px;gap:12px;align-items:center;text-align:left}.categoryIconBubble,.summaryIcon,.emptyCircle{width:44px;height:44px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.06));border:1px solid var(--line);font-size:22px}.categoryCopy b{display:block;font-size:18px;letter-spacing:-.02em}.categoryCopy span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.categoryCount{min-width:27px;height:27px;border-radius:999px;display:grid;place-items:center;background:var(--chip);color:var(--muted);font-weight:950;font-size:12px}.plusBubble{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.12);border:1px solid var(--line);color:var(--text)}.compactIdeaList{border-top:1px solid var(--line);padding:12px 12px 14px}.topPick{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:10px 12px;margin-bottom:8px;border-radius:17px;background:linear-gradient(135deg,rgba(251,146,60,.14),rgba(255,255,255,.06))}.topPick span{font-size:10px;color:#fb923c;text-transform:uppercase;font-weight:950;letter-spacing:.08em}.topPick b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.topPick small{font-size:11px;color:var(--muted)}.ideaCard{border:1px solid var(--line);background:var(--panel2);border-radius:20px;padding:12px;display:flex;gap:12px;align-items:center;margin-top:8px;text-align:left;color:var(--text);width:100%}.ideaMain{flex:1;min-width:0}.ideaMain b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ideaMain span,.ideaMain p{display:block;color:var(--muted);font-size:12px;margin:4px 0 0}.votePill{display:grid;grid-template-columns:26px 24px 26px;align-items:center;background:var(--chip);border-radius:999px;padding:4px}.votePill button{border:0;background:transparent;color:var(--text);font-weight:950}.votePill strong{text-align:center;font-size:12px}.sheetKicker{color:#fb923c;text-transform:uppercase;font-weight:950;letter-spacing:.12em;font-size:11px}.dayHeader{display:flex;justify-content:space-between;align-items:end;margin-bottom:13px}.dayHeader span{font-size:18px;font-weight:950}.dayHeader small{color:var(--muted)}.timelineItem{width:100%;display:grid;grid-template-columns:74px 1fr;gap:10px;border:0;background:transparent;color:var(--text);text-align:left;padding:0;margin:0 0 12px}.timeRail{display:flex;flex-direction:column;align-items:flex-end;gap:8px;color:#fb923c;font-size:12px;font-weight:900;padding-top:10px}.timeRail i{width:2px;flex:1;min-height:58px;background:linear-gradient(#fb923c,transparent);border-radius:999px}.timelineCard{background:var(--panel2);border:1px solid var(--line);border-radius:24px;padding:14px}.pill{display:inline-flex;background:var(--chip);border-radius:999px;padding:5px 9px;color:var(--muted);font-size:11px;font-weight:900}.timelineCard h3{margin:9px 0 5px;font-size:17px}.timelineCard p{margin:0;color:var(--muted);font-size:13px;line-height:1.35}.metaLine{display:flex;gap:11px;margin-top:11px;color:var(--muted);font-size:12px}.metaLine span{display:flex;align-items:center;gap:4px}.calendarTop{display:flex;align-items:center;justify-content:space-between}.calendarTop h2{margin:0}.realCalendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.weekday{font-size:11px;color:var(--muted);text-align:center;font-weight:900}.calCell{min-height:78px;border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:7px;overflow:hidden}.calCell>span{font-size:12px;color:var(--muted);font-weight:900}.calCell.muted{opacity:.42}.tripBar{width:100%;border:0;background:linear-gradient(135deg,#fb923c,#ec4899);color:white;border-radius:999px;padding:4px 6px;font-size:10px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.segmented{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);padding:5px;border-radius:999px;gap:5px}.segmented button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:950;padding:11px;display:flex;align-items:center;justify-content:center;gap:7px}.segmented button.active{background:linear-gradient(135deg,rgba(251,146,60,.28),rgba(255,255,255,.08));color:var(--text);box-shadow:0 8px 20px rgba(0,0,0,.1)}.fancySegmented{margin-top:-2px}.logisticsStack,.polishedLogisticsStack{display:flex;flex-direction:column;gap:14px}.logisticsEmpty{text-align:center;border:1px dashed var(--line);background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.035));border-radius:26px;padding:28px 24px;display:grid;justify-items:center;gap:10px}.logisticsEmpty h3{margin:4px 0 0;font-size:20px}.logisticsEmpty p{margin:0 0 9px;color:var(--muted);line-height:1.35}.logisticsEmpty .emptyCircle{width:62px;height:62px;border-radius:50%;font-size:24px;color:var(--muted)}.logSummaryCard{overflow:hidden}.summaryButton{width:100%;border:0;background:transparent;color:var(--text);display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:12px;text-align:left;padding:14px}.summaryButton b{display:block;font-size:17px}.summaryButton span,.summaryButton small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.summaryChevron{border:1px solid var(--line);border-radius:999px;padding:7px 10px!important;font-weight:950;color:var(--text)!important;background:var(--chip)}.summaryDrawer{border-top:1px solid var(--line);padding:14px;display:grid;gap:10px;width:100%;max-width:100%;min-width:0;overflow:hidden}.helperCard{padding:18px}.helperCard b{font-size:16px}.helperCard p{color:var(--muted);margin:6px 0 0;font-size:13px;line-height:1.4}.flightLeg{border:1px solid var(--line);background:var(--panel2);border-radius:22px;padding:12px;display:grid;gap:10px}.flightLegHeader{display:flex;justify-content:space-between;align-items:center}.danger{color:#fb7185}.textDanger{border:0;background:transparent;color:#fb7185;font-weight:900;padding:10px}.softEmpty{border:1px dashed var(--line);border-radius:20px;padding:18px;text-align:center;color:var(--muted)}.empty{text-align:center;padding:42px 20px}.emptyIcon{font-size:44px}.empty h2{font-size:28px;margin:9px 0}.empty p{color:var(--muted);max-width:430px;margin:0 auto 20px}.emptyMini{text-align:center;color:var(--muted);padding:18px}.mobileNav{position:fixed;left:12px;right:12px;bottom:14px;z-index:30;height:76px;display:grid;grid-template-columns:1fr 1fr 70px 1fr 1fr;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 86%,transparent);backdrop-filter:blur(22px);border-radius:28px;box-shadow:0 18px 50px rgba(0,0,0,.25)}.mobileNav button{border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:900}.mobileNav button.active{color:#fb923c}.mobileNav .addRound{width:58px;height:58px;border-radius:22px;background:linear-gradient(135deg,#fb923c,#f97316);color:white;justify-self:center;align-self:center;display:flex!important;align-items:center!important;justify-content:center!important;padding:0!important;line-height:0!important;box-shadow:0 12px 25px rgba(249,115,22,.33)}.mobileNav .addRound svg{display:block;transform:translateY(1px);margin:0}.tripSwitchList{display:grid;gap:10px}.tripSwitchItem{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:22px;padding:14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;text-align:left}.tripSwitchItem.active{border-color:rgba(251,146,60,.5);background:linear-gradient(135deg,rgba(251,146,60,.18),rgba(255,255,255,.06))}.tripSwitchItem b{display:block;font-size:16px}.tripSwitchItem span{display:block;color:var(--muted);font-size:12px;margin-top:4px}.tripSwitchItem strong{font-size:11px;color:#fb923c;text-transform:uppercase;letter-spacing:.08em}.modalBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:end center;z-index:60;padding:14px}.modal{width:min(560px,100%);max-height:86vh;overflow:auto;background:linear-gradient(145deg,var(--bg1),var(--bg2));border:1px solid var(--line);border-radius:30px;padding:20px;display:grid;gap:12px;color:var(--text);box-shadow:0 30px 80px rgba(0,0,0,.35)}.closeBtn{justify-self:end;border:0;background:var(--chip);color:var(--text);border-radius:999px;width:36px;height:36px}.modal h2{margin:0}.profileBox{display:flex;gap:12px;border:1px solid var(--line);border-radius:22px;padding:14px;background:var(--panel)}.profileBox p{margin:4px 0 0;color:var(--muted)}
 
 .heroActions{display:flex;align-items:center;gap:8px;flex-shrink:0}.heroIcon{width:40px;height:40px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.10);color:var(--text);display:flex;align-items:center;justify-content:center;position:relative}.notificationDot{position:relative}.notificationDot:after{content:"";position:absolute;right:7px;top:7px;width:8px;height:8px;border-radius:999px;background:#fb923c;border:2px solid rgba(7,17,32,.92)}.stripActions{display:flex;align-items:center;gap:8px}.iconOnly{width:44px;height:44px;padding:0}.modalSubcopy{margin:-4px 0 4px;color:var(--muted);font-size:13px;line-height:1.4}.shareInputRow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.primaryBtn.compact{height:52px;padding:0 16px}.shareLinkBox{border:1px solid var(--line);background:linear-gradient(135deg,rgba(251,146,60,.14),rgba(255,255,255,.05));border-radius:22px;padding:14px;display:grid;gap:4px}.shareLinkBox span{color:var(--muted);font-size:13px;line-height:1.4}.collabList,.notificationList,.profileSection{display:grid;gap:10px}.collabList h3,.profileSection h3{margin:4px 0 0}.collabRow,.notificationRow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:12px}.collabRow b,.notificationRow b{display:block;font-size:14px}.collabRow span,.notificationRow span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.avatarCircle,.notifIcon{width:38px;height:38px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(251,146,60,.30),rgba(255,255,255,.08));color:#fff;font-weight:950}.profileHero{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:center}.profileHero h2{margin:0}.profileHero p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.35}.profileAvatar{width:58px;height:58px;border-radius:22px;background:linear-gradient(135deg,#fb923c,#f97316);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:950;color:#fff;box-shadow:0 14px 26px rgba(249,115,22,.25)}.profileStats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.profileStats div{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:14px;text-align:center}.profileStats b{display:block;font-size:22px}.profileStats span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
+
+.userSearchBox{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;border:1px solid var(--line);background:var(--input);border-radius:20px;padding:0 12px}.userSearchBox input{border:0;background:transparent;padding-left:0}.inlineNotice{border:1px solid rgba(251,146,60,.25);background:rgba(251,146,60,.12);color:var(--text);border-radius:18px;padding:12px 13px;font-size:13px;line-height:1.35}.inviteActions{display:flex;gap:8px;margin-top:10px}.inviteNotification{align-items:start}.toastNotice{position:fixed;left:14px;right:14px;bottom:104px;z-index:80;border:1px solid rgba(251,146,60,.35);background:rgba(15,23,42,.92);color:#fff;border-radius:18px;padding:12px 14px;text-align:center;font-weight:800;box-shadow:0 18px 50px rgba(0,0,0,.35)}
 
 @media (min-width: 820px){.app{padding-bottom:40px}.desktopTop{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:14px 22px;background:color-mix(in srgb,var(--panel2) 80%,transparent);backdrop-filter:blur(22px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.brand small{display:block;color:var(--muted);font-size:11px}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,#fb923c,#ec4899)}.tripSelect{width:190px}.desktopNav{display:flex;gap:6px;background:var(--chip);border-radius:999px;padding:5px}.desktopNav button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:900;padding:9px 12px}.desktopNav button.active{background:var(--panel2);color:var(--text)}.mobileHero,.mobileNav{display:none}.shell{padding:28px}.controlStrip{top:80px;grid-template-columns:1fr auto auto}.controlStrip .primaryBtn{grid-column:auto}.categoryStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.pageStack{gap:20px}.realCalendar{gap:8px}.calCell{min-height:122px;border-radius:20px}.timelineItem{grid-template-columns:110px 1fr}.timelineCard h3{font-size:20px}.logisticsStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.modalBackdrop{place-items:center}}
 @media (max-width: 430px){.shell{padding:14px}.mobileTripTitle span{font-size:27px}.split2{grid-template-columns:minmax(0,1fr);width:100%;max-width:100%;overflow:hidden}.calCell{min-height:70px;padding:5px;border-radius:12px}.tripBar{font-size:9px}.categoryAddRow{grid-template-columns:40px 1fr auto 40px;padding:14px 13px}.categoryIconBubble{width:40px;height:40px}.plusBubble{width:38px;height:38px}.summaryButton{grid-template-columns:40px 1fr auto}.summaryChevron{font-size:11px;padding:7px 8px!important}}
