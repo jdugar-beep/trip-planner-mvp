@@ -24,6 +24,7 @@ import {
   UserCircle,
   Sun,
   Moon,
+  Bell,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -284,15 +285,34 @@ export default function App() {
         <div className="orb orb-one" />
         <div className="orb orb-two" />
         <nav className="topbar">
-          <div className="brand-mark"><Plane size={24} /></div>
-          <div>
-            <p className="eyebrow">Collaborative trip planner</p>
-            <h1>It’s a Trip</h1>
+          <div className="brand-left">
+            <div className="brand-mark"><Plane size={24} /></div>
+            <div>
+              <p className="eyebrow">Collaborative trip planner</p>
+              <h1>It’s a Trip</h1>
+            </div>
           </div>
-          <div className="top-actions">
-            <button className="ghost-button" onClick={addTrip}><Plus size={16} /> Add trip</button>
+
+          <div className="desktop-nav-shell">
+            {trips.length ? (
+              <select className="top-trip-select" value={activeTripId} onChange={(e) => setActiveTripId(e.target.value)}>
+                {trips.map((trip) => <option key={trip.id} value={trip.id}>{trip.name}</option>)}
+              </select>
+            ) : (
+              <button className="top-trip-select faux-select" onClick={addTrip}>Create first trip</button>
+            )}
+            <button className="nav-icon-button" title="Notifications"><Bell size={18} /></button>
+            <button className={page === "board" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("board")}>Planning</button>
+            <button className={page === "logistics" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("logistics")}>Logistics</button>
+            <button className={page === "itinerary" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("itinerary")}>Itinerary</button>
+            <button className={page === "calendar" ? "desktop-nav-item active" : "desktop-nav-item"} onClick={() => setPage("calendar")}>Calendar</button>
+            <button className="desktop-nav-item add-trip-item" onClick={addTrip}><Plus size={16} /> Add trip</button>
+            <button className="desktop-nav-item" onClick={() => setShowSettings(true)}><Settings size={16} /> Settings</button>
+          </div>
+
+          <div className="mobile-top-actions">
             {activeTrip && <button className="ghost-button" onClick={() => setShowTripEditor(true)}><Edit3 size={16} /> Edit trip</button>}
-            <button className="ghost-button" onClick={() => setShowSettings(true)}><Settings size={16} /> Settings</button>
+            <button className="ghost-button" onClick={() => setShowSettings(true)}><Settings size={16} /></button>
           </div>
         </nav>
 
@@ -331,13 +351,6 @@ export default function App() {
       </header>
 
       <main className="workspace">
-        <div className="page-tabs">
-          <button className={page === "board" ? "tab active" : "tab"} onClick={() => setPage("board")}><ListTodo size={16} /> Planning board</button>
-          <button className={page === "itinerary" ? "tab active" : "tab"} onClick={() => setPage("itinerary")}><CalendarDays size={16} /> Your itinerary</button>
-          <button className={page === "logistics" ? "tab active" : "tab"} onClick={() => setPage("logistics")}><Hotel size={16} /> Logistics</button>
-          <button className={page === "calendar" ? "tab active" : "tab"} onClick={() => setPage("calendar")}><CalendarRange size={16} /> All trips calendar</button>
-        </div>
-
         {!activeTrip && page !== "calendar" ? (
           <EmptyCreateTrip onAddTrip={addTrip} />
         ) : page === "board" ? (
@@ -371,6 +384,28 @@ export default function App() {
           />
         )}
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        <button className={page === "board" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("board")}>
+          <ListTodo size={20} />
+          <span>Planning</span>
+        </button>
+        <button className={page === "logistics" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("logistics")}>
+          <Hotel size={20} />
+          <span>Logistics</span>
+        </button>
+        <button className="mobile-nav-add" onClick={addTrip} aria-label="Add trip">
+          <Plus size={30} />
+        </button>
+        <button className={page === "itinerary" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("itinerary")}>
+          <CalendarDays size={20} />
+          <span>Itinerary</span>
+        </button>
+        <button className={page === "calendar" ? "mobile-nav-button active" : "mobile-nav-button"} onClick={() => setPage("calendar")}>
+          <CalendarRange size={20} />
+          <span>Calendar</span>
+        </button>
+      </nav>
 
       {showTripEditor && activeTrip && (
         <div className="modal-backdrop" onClick={() => setShowTripEditor(false)}>
@@ -799,11 +834,21 @@ button, input, textarea, select { font: inherit; }
 .orb-two { width: 360px; height: 360px; background: #ec4899; right: -130px; bottom: -180px; }
 .topbar, .hero-content, .workspace { max-width: 1240px; margin: 0 auto; position: relative; z-index: 1; }
 .topbar { display: flex; align-items: center; gap: 14px; }
+.brand-left { display: flex; align-items: center; gap: 14px; min-width: 210px; }
 .brand-mark { width: 50px; height: 50px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, #ffffff, #bdd7ff); color: #0b1425; box-shadow: 0 18px 60px rgba(88,166,255,.35); }
 .topbar h1, .topbar p, .hero h2, .hero p { margin: 0; }
 .topbar h1 { font-size: 22px; letter-spacing: -.04em; }
 .eyebrow { color: #93a4bd; text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 900; }
 .top-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.desktop-nav-shell { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 7px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.07); border-radius: 999px; backdrop-filter: blur(18px); }
+.top-trip-select { width: auto; min-width: 165px; max-width: 230px; margin: 0; border-radius: 999px; padding: 9px 12px; font-size: 13px; font-weight: 900; background: rgba(2,6,23,.46); }
+.faux-select { color: white; border: 1px solid rgba(255,255,255,.12); cursor: pointer; text-align: left; }
+.nav-icon-button, .desktop-nav-item { height: 38px; border: 0; border-radius: 999px; background: transparent; color: #dbeafe; font-weight: 950; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; white-space: nowrap; }
+.nav-icon-button { width: 38px; padding: 0; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); }
+.desktop-nav-item.active { background: white; color: #0f172a; }
+.add-trip-item { background: rgba(251,146,60,.18); color: #fed7aa; border: 1px solid rgba(251,146,60,.34); }
+.mobile-top-actions { display: none; margin-left: auto; gap: 8px; }
+.mobile-bottom-nav { display: none; }
 .ghost-button, .icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: white; padding: 10px 14px; border-radius: 999px; cursor: pointer; font-weight: 850; }
 .hero-content { display: grid; grid-template-columns: 1fr 390px; gap: 32px; align-items: end; padding: 68px 0 30px; }
 .pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.1); padding: 9px 13px; border-radius: 999px; color: #dbeafe; font-weight: 900; font-size: 13px; }
@@ -938,6 +983,39 @@ input:focus, textarea:focus, select:focus { border-color: rgba(147,197,253,.72);
 .light-mode .empty-day, .light-mode .empty-state { color: #64748b; border-color: rgba(15,23,42,.16); background: rgba(255,255,255,.52); }
 .light-mode .topbar h1, .light-mode .hero h2, .light-mode .day-header h4, .light-mode .section-heading h3, .light-mode .modal h3 { color: #0f172a; }
 
+.mobile-bottom-nav { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 30; grid-template-columns: 1fr 1fr 76px 1fr 1fr; align-items: center; gap: 4px; padding: 10px; border-radius: 28px; background: rgba(10,18,34,.9); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 22px 70px rgba(0,0,0,.42); backdrop-filter: blur(22px); }
+.mobile-nav-button { height: 54px; border: 0; border-radius: 18px; background: transparent; color: #94a3b8; display: grid; place-items: center; align-content: center; gap: 4px; font-size: 10px; font-weight: 950; cursor: pointer; }
+.mobile-nav-button.active { color: #0f172a; background: linear-gradient(135deg, #ffffff, #dbeafe); }
+.mobile-nav-add { width: 64px; height: 64px; margin: -28px auto 0; border: 0; border-radius: 24px; background: linear-gradient(135deg, #fb923c, #f97316); color: white; display: grid; place-items: center; box-shadow: 0 18px 40px rgba(249,115,22,.42); cursor: pointer; }
+.light-mode .desktop-nav-shell, .light-mode .mobile-bottom-nav { background: rgba(255,255,255,.82); border-color: rgba(15,23,42,.1); box-shadow: 0 22px 70px rgba(15,23,42,.14); }
+.light-mode .top-trip-select { background: rgba(255,255,255,.92); color: #0f172a; }
+.light-mode .desktop-nav-item, .light-mode .nav-icon-button { color: #334155; }
+.light-mode .desktop-nav-item.active { background: #0f172a; color: white; }
+.light-mode .add-trip-item { background: rgba(249,115,22,.14); color: #9a3412; border-color: rgba(249,115,22,.24); }
+.light-mode .mobile-nav-button { color: #64748b; }
+.light-mode .mobile-nav-button.active { background: #0f172a; color: white; }
+
 @media (max-width: 1000px) { .hero-content { grid-template-columns: 1fr; } .idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .logistics-grid, .saved-logistics { grid-template-columns: 1fr; } .year-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .calendar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .hero, .workspace { padding: 16px; } .topbar { align-items: flex-start; } .top-actions { width: 100%; margin-left: 0; } .hero h2 { font-size: 44px; } .add-form, .two-col, .three-col, .date-time-row, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; } .add-form textarea { grid-column: auto; } .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; } .calendar-controls { justify-content: flex-start; } .section-heading { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 760px) {
+  .app-shell { padding-bottom: 96px; }
+  .hero, .workspace { padding: 14px; }
+  .topbar { align-items: center; padding-top: 4px; }
+  .brand-left { min-width: 0; }
+  .brand-mark { width: 44px; height: 44px; border-radius: 16px; }
+  .desktop-nav-shell, .top-actions, .page-tabs { display: none !important; }
+  .mobile-top-actions { display: flex; }
+  .mobile-bottom-nav { display: grid; }
+  .hero-content { padding: 34px 0 18px; gap: 18px; }
+  .hero h2 { font-size: 42px; }
+  .hero-subtitle { font-size: 15px; line-height: 1.55; }
+  .hero-card { border-radius: 26px; padding: 18px; }
+  .workspace { padding-bottom: 120px; }
+  .add-form, .two-col, .three-col, .date-time-row, .timeline-item, .idea-grid, .year-grid, .calendar-grid { grid-template-columns: 1fr; }
+  .add-form textarea { grid-column: auto; }
+  .calendar-grid.week .calendar-cell, .calendar-cell { min-height: 120px; }
+  .calendar-controls { justify-content: flex-start; }
+  .section-heading { align-items: flex-start; flex-direction: column; }
+  .modal-backdrop { align-items: end; padding: 12px; }
+  .modal { border-radius: 28px 28px 20px 20px; width: 100%; max-height: 88vh; }
+}
 `;
