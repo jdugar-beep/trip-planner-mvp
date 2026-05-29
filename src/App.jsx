@@ -453,7 +453,28 @@ export default function App() {
   if (!user) {
     return (
       <div className={`app ${theme}`}>
-        <style>{css}</style>
+        <style>{css}
+/* FIX: collapsed itinerary day rows should be uniform full-width bars */
+.dayTimeline {
+  width: 100%;
+  box-sizing: border-box;
+}
+.dayTimeline.collapsed {
+  width: 100%;
+  background: #1f1f24 !important;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+.dayTimeline.collapsed .dayHeader,
+.dayHeader.clickableDayHeader {
+  width: 100% !important;
+  max-width: none !important;
+  box-sizing: border-box;
+}
+.dayTimeline.collapsed .dayHeader {
+  border-bottom: 0 !important;
+}
+
+</style>
         <AuthModal standalone />
       </div>
     );
