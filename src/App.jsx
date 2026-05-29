@@ -670,7 +670,7 @@ function IdeaCard({ idea, vote, edit }) {
 }
 
 function ItineraryPage({ trip, editIdea }) {
-  const [collapsedDays, setCollapsedDays] = useState({});
+  const [collapsedDays, setCollapsedDays] = useState(() => ({}));
   const dates = daysBetween(trip.startDate, trip.endDate);
   const scheduled = trip.ideas
     .filter((i) => i.scheduledDate)
