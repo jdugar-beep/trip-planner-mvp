@@ -1035,68 +1035,132 @@ function NotificationsModal({ user, refreshTrips, close }) {
 }
 
 function ProfileModal({ user, profile, trips, theme, setTheme, close }) {
-  const [friends, setFriends] = useState([]);
-  const [friendsLoading, setFriendsLoading] = useState(false);
   const now = todayIso();
   const futureTrips = trips.filter((t) => (t.endDate || "9999-12-31") >= now).length;
   const pastTrips = trips.filter((t) => t.endDate && t.endDate < now).length;
+  const [friends, setFriends] = useState([]);
+  const [followingIds, setFollowingIds] = useState(new Set());
+  const [followerIds, setFollowerIds] = useState(new Set());
+  const [friendSearch, setFriendSearch] = useState("");
+  const [friendResults, setFriendResults] = useState([]);
+  const [friendMessage, setFriendMessage] = useState("");
+  const [friendsLoading, setFriendsLoading] = useState(false);
 
   useEffect(() => {
-    let alive = true;
+    loadFriends();
+  }, [user?.id]);
 
-    async function loadFriends() {
-      if (!user?.id) {
-        setFriends([]);
-        return;
-      }
+  useEffect(() => {
+    const q = friendSearch.trim();
+    if (!user?.id || q.length < 2) {
+      setFriendResults([]);
+      return;
+    }
+    const timer = setTimeout(() => searchFriends(q), 250);
+    return () => clearTimeout(timer);
+  }, [friendSearch, user?.id, followingIds, followerIds]);
 
-      setFriendsLoading(true);
+  async function loadFriends() {
+    if (!user?.id) return;
+    setFriendsLoading(true);
+    setFriendMessage("");
 
-      const { data: follows = [], error } = await supabase
-        .from("follows")
-        .select("follower_id, following_id")
-        .or(`follower_id.eq.${user.id},following_id.eq.${user.id}`);
+    const { data, error } = await supabase
+      .from("follows")
+      .select("follower_id, following_id")
+      .or(`follower_id.eq.${user.id},following_id.eq.${user.id}`);
 
-      if (error) {
-        if (alive) {
-          setFriends([]);
-          setFriendsLoading(false);
-        }
-        return;
-      }
-
-      const following = new Set((follows || []).filter((f) => f.follower_id === user.id).map((f) => f.following_id));
-      const followers = new Set((follows || []).filter((f) => f.following_id === user.id).map((f) => f.follower_id));
-      const mutualFriendIds = [...following].filter((id) => followers.has(id));
-
-      if (!mutualFriendIds.length) {
-        if (alive) {
-          setFriends([]);
-          setFriendsLoading(false);
-        }
-        return;
-      }
-
-      const { data: profiles = [] } = await supabase
-        .from("profiles")
-        .select("id, username, full_name, avatar_url")
-        .in("id", mutualFriendIds);
-
-      if (alive) {
-        setFriends(profiles || []);
-        setFriendsLoading(false);
-      }
+    if (error) {
+      setFriendMessage(error.message);
+      setFriendsLoading(false);
+      return;
     }
 
-    loadFriends();
-    return () => {
-      alive = false;
-    };
-  }, [user?.id]);
+    const outgoing = new Set((data || []).filter((f) => f.follower_id === user.id).map((f) => f.following_id));
+    const incoming = new Set((data || []).filter((f) => f.following_id === user.id).map((f) => f.follower_id));
+    const mutualIds = [...outgoing].filter((id) => incoming.has(id));
+
+    setFollowingIds(outgoing);
+    setFollowerIds(incoming);
+
+    if (!mutualIds.length) {
+      setFriends([]);
+      setFriendsLoading(false);
+      return;
+    }
+
+    const { data: profileRows, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, username, full_name, avatar_url")
+      .in("id", mutualIds);
+
+    if (profileError) setFriendMessage(profileError.message);
+    setFriends(profileRows || []);
+    setFriendsLoading(false);
+  }
+
+  async function searchFriends(rawQuery) {
+    const q = rawQuery.replace(/[%_,]/g, "").trim();
+    if (!q) return;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, username, full_name, avatar_url")
+      .or(`username.ilike.%${q}%,full_name.ilike.%${q}%`)
+      .neq("id", user.id)
+      .limit(8);
+
+    if (error) {
+      setFriendMessage(error.message);
+      setFriendResults([]);
+      return;
+    }
+
+    setFriendResults(data || []);
+  }
+
+  async function addFriend(friendId) {
+    if (!user?.id || !friendId) return;
+    setFriendMessage("");
+
+    const { error } = await supabase.from("follows").insert({
+      follower_id: user.id,
+      following_id: friendId,
+    });
+
+    if (error && !error.message.toLowerCase().includes("duplicate")) {
+      setFriendMessage(error.message);
+      return;
+    }
+
+    setFriendMessage("Friend request sent. They’ll show as a friend once they add you back.");
+    await loadFriends();
+    if (friendSearch.trim().length >= 2) await searchFriends(friendSearch.trim());
+  }
+
+  async function removeFriend(friendId) {
+    if (!user?.id || !friendId) return;
+    await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", friendId);
+    setFriendMessage("Removed from your friends.");
+    await loadFriends();
+  }
 
   async function signOut() {
     await supabase.auth.signOut();
     close();
+  }
+
+  function displayName(row) {
+    return row?.full_name || row?.username || "Unnamed user";
+  }
+
+  function friendStatus(row) {
+    const isFollowing = followingIds.has(row.id);
+    const followsYou = followerIds.has(row.id);
+    if (isFollowing && followsYou) return "Friends";
+    if (isFollowing) return "Added";
+    if (followsYou) return "Add back";
+    return "Add Friend";
   }
 
   return (
@@ -1106,18 +1170,6 @@ function ProfileModal({ user, profile, trips, theme, setTheme, close }) {
         <div className="profileAvatar">{(profile?.full_name || profile?.username || user?.email || "J")[0].toUpperCase()}</div>
         <div><h2>{profile?.full_name || profile?.username || user?.email || "Traveler"}</h2><p>{profile?.username ? `@${profile.username}` : "Set up your profile soon."}</p></div>
       </div>
-
-      <div className="profileThemeToggle">
-        <div>
-          <b>Appearance</b>
-          <span>Choose how Planet Travel looks.</span>
-        </div>
-        <div className="themeMiniToggle">
-          <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={15} /> Light</button>
-          <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={15} /> Dark</button>
-        </div>
-      </div>
-
       <div className="profileStats">
         <div><b>{friends.length}</b><span>Friends</span></div>
         <div><b>{pastTrips}</b><span>Past trips</span></div>
@@ -1125,23 +1177,46 @@ function ProfileModal({ user, profile, trips, theme, setTheme, close }) {
       </div>
 
       <div className="profileSection">
-        <h3>Friends</h3>
-        {friendsLoading ? (
-          <div className="softEmpty">Loading friends…</div>
-        ) : friends.length === 0 ? (
-          <div className="softEmpty">No friends yet. Add people and have them add you back to build your travel circle.</div>
-        ) : friends.map((friend) => {
-          const displayName = friend.full_name || friend.username || "Unnamed user";
-          const username = friend.username ? `@${friend.username}` : "Friend";
-          return (
-            <div className="collabRow" key={friend.id}>
-              <div className="avatarCircle">{displayName[0].toUpperCase()}</div>
-              <div><b>{displayName}</b><span>{username}</span></div>
-            </div>
-          );
-        })}
+        <h3>Appearance</h3>
+        <div className="segmented">
+          <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button>
+          <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button>
+        </div>
       </div>
 
+      <div className="profileSection">
+        <h3>Friends</h3>
+        <div className="userSearchBox">
+          <Search size={16} />
+          <input placeholder="Search users by name or username" value={friendSearch} onChange={(e) => setFriendSearch(e.target.value)} />
+        </div>
+        {friendMessage && <div className="inlineNotice">{friendMessage}</div>}
+        {friendSearch.trim().length >= 2 && (
+          <div className="collabList">
+            {friendResults.length === 0 ? <div className="softEmpty">No matching users found.</div> : friendResults.map((result) => {
+              const status = friendStatus(result);
+              const isFriend = status === "Friends";
+              const isAdded = status === "Added";
+              return (
+                <div className="collabRow" key={result.id}>
+                  <div className="avatarCircle">{displayName(result)[0].toUpperCase()}</div>
+                  <div><b>{displayName(result)}</b><span>{result.username ? `@${result.username}` : "Planet Travel user"}</span></div>
+                  <button className={isFriend || isAdded ? "ghostBtn small" : "primaryBtn compact"} disabled={isFriend || isAdded} onClick={() => addFriend(result.id)}>{status}</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="collabList">
+          {friendsLoading ? <div className="softEmpty">Loading friends…</div> : friends.length === 0 ? <div className="softEmpty">No friends yet. Search for someone above and add them. They’ll appear here once you’ve added each other.</div> : friends.map((friend) => (
+            <div className="collabRow" key={friend.id}>
+              <div className="avatarCircle">{displayName(friend)[0].toUpperCase()}</div>
+              <div><b>{displayName(friend)}</b><span>{friend.username ? `@${friend.username}` : "Friend"}</span></div>
+              <button className="ghostBtn small" onClick={() => removeFriend(friend.id)}>Remove</button>
+            </div>
+          ))}
+        </div>
+      </div>
       <button className="ghostBtn full" onClick={signOut}><LogOut size={16} /> Log out</button>
     </Modal>
   );
@@ -1212,7 +1287,6 @@ const css = `
 
 .userSearchBox{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;border:1px solid var(--line);background:var(--input);border-radius:20px;padding:0 12px}.userSearchBox input{border:0;background:transparent;padding-left:0}.inlineNotice{border:1px solid rgba(251,146,60,.25);background:rgba(251,146,60,.12);color:var(--text);border-radius:18px;padding:12px 13px;font-size:13px;line-height:1.35}.inviteActions{display:flex;gap:8px;margin-top:10px}.inviteNotification{align-items:start}.toastNotice{position:fixed;left:14px;right:14px;bottom:104px;z-index:80;border:1px solid rgba(251,146,60,.35);background:rgba(15,23,42,.92);color:#fff;border-radius:18px;padding:12px 14px;text-align:center;font-weight:800;box-shadow:0 18px 50px rgba(0,0,0,.35)}
 
-.profileThemeToggle{display:grid;gap:12px;border:1px solid var(--line);background:var(--panel);border-radius:22px;padding:14px}.profileThemeToggle b{display:block;font-size:15px}.profileThemeToggle span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.themeMiniToggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--chip);border-radius:999px;padding:5px}.themeMiniToggle button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:950;padding:10px;display:flex;align-items:center;justify-content:center;gap:6px}.themeMiniToggle button.active{background:linear-gradient(135deg,rgba(251,146,60,.28),rgba(255,255,255,.08));color:var(--text);box-shadow:0 8px 20px rgba(0,0,0,.1)}
-@media (min-width: 820px){.app{padding-bottom:40px}.desktopTop{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:14px 22px;background:color-mix(in srgb,var(--panel2) 80%,transparent);backdrop-filter:blur(22px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.brand small{display:block;color:var(--muted);font-size:11px}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,#fb923c,#ec4899)}.tripSelect{width:190px}.desktopNav{display:flex;gap:6px;background:var(--chip);border-radius:999px;padding:5px}.desktopNav button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:900;padding:9px 12px}.desktopNav button.active{background:var(--panel2);color:var(--text)}.mobileHero,.mobileNav{display:none}.shell{padding:28px}.controlStrip{top:80px;grid-template-columns:1fr auto auto}.controlStrip .primaryBtn{grid-column:auto}.categoryStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.pageStack{gap:20px}.realCalendar{gap:8px}.calCell{min-height:122px;border-radius:20px}.timelineItem{grid-template-columns:110px 1fr}.timelineCard h3{font-size:20px}.logisticsStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.modalBackdrop{place-items:center}}
+.profileSection .collabRow{grid-template-columns:auto 1fr auto}.profileSection .primaryBtn.compact,.profileSection .ghostBtn.small{white-space:nowrap;height:38px;padding:0 12px;font-size:12px}.profileSection .userSearchBox{margin-top:2px}@media (min-width: 820px){.app{padding-bottom:40px}.desktopTop{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:14px 22px;background:color-mix(in srgb,var(--panel2) 80%,transparent);backdrop-filter:blur(22px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.brand small{display:block;color:var(--muted);font-size:11px}.logo{width:38px;height:38px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,#fb923c,#ec4899)}.tripSelect{width:190px}.desktopNav{display:flex;gap:6px;background:var(--chip);border-radius:999px;padding:5px}.desktopNav button{border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:900;padding:9px 12px}.desktopNav button.active{background:var(--panel2);color:var(--text)}.mobileHero,.mobileNav{display:none}.shell{padding:28px}.controlStrip{top:80px;grid-template-columns:1fr auto auto}.controlStrip .primaryBtn{grid-column:auto}.categoryStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.pageStack{gap:20px}.realCalendar{gap:8px}.calCell{min-height:122px;border-radius:20px}.timelineItem{grid-template-columns:110px 1fr}.timelineCard h3{font-size:20px}.logisticsStack{display:grid;grid-template-columns:repeat(2,1fr);align-items:start}.modalBackdrop{place-items:center}}
 @media (max-width: 430px){.shell{padding:14px}.planetLogo{width:62px;height:62px}.planetTitle{font-size:33px}.mobileTripTitle span{font-size:27px}.split2{grid-template-columns:minmax(0,1fr);width:100%;max-width:100%;overflow:hidden}.dayHeader{padding:15px 16px}.dayHeader span{font-size:18px}.dayHeader small{font-size:12px;padding:7px 9px}.timelineList{padding:15px 16px 2px}.calCell{min-height:70px;padding:5px;border-radius:12px}.tripBar{font-size:9px}.categoryAddRow{grid-template-columns:40px 1fr auto 40px;padding:14px 13px}.categoryIconBubble{width:40px;height:40px}.plusBubble{width:38px;height:38px}.summaryButton{grid-template-columns:40px 1fr auto}.summaryChevron{font-size:11px;padding:7px 8px!important}}
 `;
