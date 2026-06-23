@@ -65,7 +65,10 @@ function googlePlacesErrorMessage(status: number, body: any) {
   const googleMessage = body?.error?.message || body?.error || "";
   if (status === 400) return "Google Places rejected the search request.";
   if (status === 403) {
-    return "Google Places rejected the API key. Check that Places API (New) is enabled and the key is allowed to use it.";
+    const detail = typeof googleMessage === "string" && googleMessage.trim()
+      ? ` Google says: ${googleMessage}`
+      : "";
+    return `Google Places rejected the API key. Check that Places API (New) is enabled, billing is active, and the key is allowed to use it.${detail}`;
   }
   if (status === 429) return "Google Places quota was reached.";
   if (typeof googleMessage === "string" && googleMessage.trim()) return googleMessage;
