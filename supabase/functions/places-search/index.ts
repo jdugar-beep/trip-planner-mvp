@@ -61,6 +61,17 @@ async function reserveQuota(userId: string) {
   return { allowed: true, count: nextCount, limit: DAILY_LIMIT, day };
 }
 
+function googlePlacesErrorMessage(status: number, body: any) {
+  const googleMessage = body?.error?.message || body?.error || "";
+  if (status === 400) return "Google Places rejected the search request.";
+  if (status === 403) {
+    return "Google Places rejected the API key. Check that Places API (New) is enabled and the key is allowed to use it.";
+  }
+  if (status === 429) return "Google Places quota was reached.";
+  if (typeof googleMessage === "string" && googleMessage.trim()) return googleMessage;
+  return "Google Places search failed.";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405);
@@ -119,10 +130,16 @@ Deno.serve(async (req) => {
     }),
   });
 
-  const placesJson = await placesResponse.json();
+  let placesJson: any = {};
+  try {
+    placesJson = await placesResponse.json();
+  } catch {
+    placesJson = {};
+  }
+
   if (!placesResponse.ok) {
     console.error("google_places_error", placesJson);
-    return json({ error: "Google Places search failed.", quota }, placesResponse.status);
+    return json({ error: googlePlacesErrorMessage(placesResponse.status, placesJson), quota }, placesResponse.status);
   }
 
   const places = (placesJson.places || []).map((place: any) => ({
