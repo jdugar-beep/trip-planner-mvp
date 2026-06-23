@@ -619,13 +619,11 @@ function PlanningPage({ trip, mutateTrip, editIdea }) {
     }
   }
   function usePlace(place) {
-    const rating = place.rating ? `${place.rating} stars${place.userRatingCount ? ` from ${place.userRatingCount} reviews` : ""}` : "";
-    const notes = [place.address, rating].filter(Boolean).join("\n");
     setForm((current) => ({
       ...current,
       title: place.name || current.title,
       link: place.url || current.link,
-      notes: current.notes || notes,
+      notes: current.notes || place.address || "",
     }));
     setPlacesMessage(`${place.name} added to the form.`);
   }
@@ -696,6 +694,7 @@ function PlanningPage({ trip, mutateTrip, editIdea }) {
               <button className="ghostBtn" type="button" onClick={runPlaceSearch} disabled={placesLoading}><Search size={16} /> {placesLoading ? "Searching" : "Search"}</button>
             </div>
             {placesQuota && <div className="quotaLine">Places usage today: {placesQuota.count}/{placesQuota.limit}</div>}
+            {placesQuota?.monthly && <div className="quotaLine">App-wide usage this month: {placesQuota.monthly.count}/{placesQuota.monthly.limit}</div>}
             {placesMessage && <div className="inlineNotice">{placesMessage}</div>}
             {placeResults.length > 0 && (
               <div className="placeResultList">
@@ -703,7 +702,6 @@ function PlanningPage({ trip, mutateTrip, editIdea }) {
                   <button className="placeResult" type="button" key={place.id} onClick={() => usePlace(place)}>
                     <b>{place.name}</b>
                     <span>{place.address || "Google Places result"}</span>
-                    {place.rating && <small>{place.rating} stars{place.userRatingCount ? ` · ${place.userRatingCount} reviews` : ""}</small>}
                   </button>
                 ))}
               </div>

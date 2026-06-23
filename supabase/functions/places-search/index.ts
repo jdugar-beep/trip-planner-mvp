@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
 const DAILY_LIMIT = Number(Deno.env.get("PLACES_DAILY_REQUEST_LIMIT") || "25");
+const MONTHLY_GLOBAL_LIMIT = Number(Deno.env.get("PLACES_MONTHLY_GLOBAL_LIMIT") || "900");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
@@ -25,6 +26,10 @@ function usageDay() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function usageMonth() {
+  return `${new Date().toISOString().slice(0, 7)}-01`;
+}
+
 async function getUser(req: Request) {
   const authHeader = req.headers.get("Authorization") || "";
   if (!authHeader) return null;
@@ -36,29 +41,73 @@ async function getUser(req: Request) {
 
 async function reserveQuota(userId: string) {
   const day = usageDay();
-  const { data: row, error: selectError } = await supabaseAdmin
+  const month = usageMonth();
+  const { data: userRow, error: userSelectError } = await supabaseAdmin
     .from("places_usage")
     .select("request_count")
     .eq("user_id", userId)
     .eq("usage_date", day)
     .maybeSingle();
 
-  if (selectError) throw selectError;
+  if (userSelectError) throw userSelectError;
 
-  const currentCount = row?.request_count || 0;
-  if (currentCount >= DAILY_LIMIT) {
-    return { allowed: false, count: currentCount, limit: DAILY_LIMIT, day };
+  const userCurrentCount = userRow?.request_count || 0;
+  if (userCurrentCount >= DAILY_LIMIT) {
+    return {
+      allowed: false,
+      reason: "daily_user",
+      count: userCurrentCount,
+      limit: DAILY_LIMIT,
+      day,
+      monthly: null,
+    };
   }
 
-  const nextCount = currentCount + 1;
-  const { error: upsertError } = await supabaseAdmin.from("places_usage").upsert({
+  const { data: monthRow, error: monthSelectError } = await supabaseAdmin
+    .from("places_global_usage")
+    .select("request_count")
+    .eq("usage_month", month)
+    .maybeSingle();
+
+  if (monthSelectError) throw monthSelectError;
+
+  const monthCurrentCount = monthRow?.request_count || 0;
+  if (monthCurrentCount >= MONTHLY_GLOBAL_LIMIT) {
+    return {
+      allowed: false,
+      reason: "monthly_global",
+      count: userCurrentCount,
+      limit: DAILY_LIMIT,
+      day,
+      monthly: { count: monthCurrentCount, limit: MONTHLY_GLOBAL_LIMIT, month },
+    };
+  }
+
+  const userNextCount = userCurrentCount + 1;
+  const monthNextCount = monthCurrentCount + 1;
+  const { error: userUpsertError } = await supabaseAdmin.from("places_usage").upsert({
     user_id: userId,
     usage_date: day,
-    request_count: nextCount,
+    request_count: userNextCount,
   });
 
-  if (upsertError) throw upsertError;
-  return { allowed: true, count: nextCount, limit: DAILY_LIMIT, day };
+  if (userUpsertError) throw userUpsertError;
+
+  const { error: monthUpsertError } = await supabaseAdmin.from("places_global_usage").upsert({
+    usage_month: month,
+    request_count: monthNextCount,
+  });
+
+  if (monthUpsertError) throw monthUpsertError;
+
+  return {
+    allowed: true,
+    reason: null,
+    count: userNextCount,
+    limit: DAILY_LIMIT,
+    day,
+    monthly: { count: monthNextCount, limit: MONTHLY_GLOBAL_LIMIT, month },
+  };
 }
 
 function googlePlacesErrorMessage(status: number, body: any) {
@@ -102,8 +151,11 @@ Deno.serve(async (req) => {
   }
 
   if (!quota.allowed) {
+    const message = quota.reason === "monthly_global"
+      ? `Monthly app-wide Places search limit reached (${quota.monthly?.count}/${quota.monthly?.limit}).`
+      : `Daily Places search limit reached (${quota.count}/${quota.limit}).`;
     return json({
-      error: `Daily Places search limit reached (${quota.count}/${quota.limit}).`,
+      error: message,
       quota,
     }, 429);
   }
@@ -122,8 +174,6 @@ Deno.serve(async (req) => {
         "places.displayName",
         "places.formattedAddress",
         "places.googleMapsUri",
-        "places.rating",
-        "places.userRatingCount",
         "places.types",
       ].join(","),
     },
@@ -150,8 +200,6 @@ Deno.serve(async (req) => {
     name: place.displayName?.text || "Unnamed place",
     address: place.formattedAddress || "",
     url: place.googleMapsUri || "",
-    rating: place.rating || null,
-    userRatingCount: place.userRatingCount || null,
     types: place.types || [],
   }));
 
