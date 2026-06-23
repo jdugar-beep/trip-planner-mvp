@@ -1,0 +1,9 @@
+{
+  "appId": "com.jaydugar.tripplanner",
+  "appName": "Trip Planner",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "automatic"
+  }
+}
