@@ -500,7 +500,7 @@ export default function App() {
       {settingsOpen && <SettingsModal user={user} theme={theme} setTheme={setTheme} close={() => setSettingsOpen(false)} onAccountDeleted={handleAccountDeleted} />}
       {appNotice && <div className="toastNotice" onClick={() => setAppNotice("")}>{appNotice}</div>}
       {notificationsOpen && <NotificationsModal user={user} trips={trips} activeTrip={activeTrip} refreshTrips={refreshTripsFromSupabase} close={() => setNotificationsOpen(false)} />}
-      {profileOpen && <ProfileModal user={user} profile={profile} trips={trips} theme={theme} setTheme={setTheme} close={() => setProfileOpen(false)} />}
+      {profileOpen && <ProfileModal user={user} profile={profile} trips={trips} theme={theme} setTheme={setTheme} close={() => setProfileOpen(false)} onAccountDeleted={handleAccountDeleted} />}
       {shareOpen && activeTrip && <ShareTripModal user={user} trip={activeTrip} refreshTrips={refreshTripsFromSupabase} close={() => setShareOpen(false)} />}
       {tripEditorOpen && activeTrip && <TripEditor trip={activeTrip} save={(patch) => updateTrip(activeTrip.id, patch)} deleteTrip={() => deleteTrip(activeTrip.id)} close={() => setTripEditorOpen(false)} />}
       {tripSwitcherOpen && <TripSwitcher trips={trips} activeTripId={activeTripId} selectTrip={(id) => { setActiveTripId(id); setTripSwitcherOpen(false); setPage("planning"); }} addTrip={() => { setTripSwitcherOpen(false); addTrip(); }} close={() => setTripSwitcherOpen(false)} />}
@@ -1116,7 +1116,7 @@ function NotificationsModal({ user, refreshTrips, close }) {
   );
 }
 
-function ProfileModal({ user, profile, trips, theme, setTheme, close }) {
+function ProfileModal({ user, profile, trips, theme, setTheme, close, onAccountDeleted }) {
   const now = todayIso();
   const futureTrips = trips.filter((t) => (t.endDate || "9999-12-31") >= now).length;
   const pastTrips = trips.filter((t) => t.endDate && t.endDate < now).length;
@@ -1299,6 +1299,7 @@ function ProfileModal({ user, profile, trips, theme, setTheme, close }) {
           ))}
         </div>
       </div>
+      <DeleteAccountSection user={user} onAccountDeleted={onAccountDeleted} />
       <button className="ghostBtn full" onClick={signOut}><LogOut size={16} /> Log out</button>
     </Modal>
   );
@@ -1378,6 +1379,26 @@ function AuthModal({ close = () => {}, standalone = false }) {
 }
 
 function SettingsModal({ user, theme, setTheme, close, onAccountDeleted }) {
+  return (
+    <Modal close={close}>
+      <h2>Settings</h2>
+      <div className="segmented">
+        <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button>
+        <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button>
+      </div>
+      <div className="profileBox">
+        <User />
+        <div>
+          <b>Profile</b>
+          <p>Your public profile, followers, saved trips, and groups will live here later.</p>
+        </div>
+      </div>
+      <DeleteAccountSection user={user} onAccountDeleted={onAccountDeleted} />
+    </Modal>
+  );
+}
+
+function DeleteAccountSection({ user, onAccountDeleted }) {
   const [deleteMessage, setDeleteMessage] = useState("");
   const [deleting, setDeleting] = useState(false);
 
@@ -1406,30 +1427,16 @@ function SettingsModal({ user, theme, setTheme, close, onAccountDeleted }) {
   }
 
   return (
-    <Modal close={close}>
-      <h2>Settings</h2>
-      <div className="segmented">
-        <button className={theme === "light" ? "active" : ""} onClick={() => setTheme("light")}><Sun size={16} /> Light</button>
-        <button className={theme === "dark" ? "active" : ""} onClick={() => setTheme("dark")}><Moon size={16} /> Dark</button>
+    <div className="dangerZone">
+      <div>
+        <b><AlertTriangle size={16} /> Delete account</b>
+        <p>Permanently delete your account, profile, trips you own, invitations, friend connections, and Places usage records. Shared trips owned by other people are not deleted, but your access is removed.</p>
       </div>
-      <div className="profileBox">
-        <User />
-        <div>
-          <b>Profile</b>
-          <p>Your public profile, followers, saved trips, and groups will live here later.</p>
-        </div>
-      </div>
-      <div className="dangerZone">
-        <div>
-          <b><AlertTriangle size={16} /> Delete account</b>
-          <p>Permanently delete your account, profile, trips you own, invitations, friend connections, and Places usage records. Shared trips owned by other people are not deleted, but your access is removed.</p>
-        </div>
-        {deleteMessage && <div className="inlineNotice">{deleteMessage}</div>}
-        <button className="dangerBtn full" disabled={deleting} onClick={deleteAccount}>
-          <Trash2 size={16} /> {deleting ? "Deleting account..." : "Delete Account"}
-        </button>
-      </div>
-    </Modal>
+      {deleteMessage && <div className="inlineNotice">{deleteMessage}</div>}
+      <button className="dangerBtn full" disabled={deleting} onClick={deleteAccount}>
+        <Trash2 size={16} /> {deleting ? "Deleting account..." : "Delete Account"}
+      </button>
+    </div>
   );
 }
 function Modal({ children, close }) { return <div className="modalBackdrop" onMouseDown={close}><div className="modal" onMouseDown={(e) => e.stopPropagation()}><button className="closeBtn" onClick={close}><X /></button>{children}</div></div>; }
